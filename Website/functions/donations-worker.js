@@ -4,12 +4,13 @@ const idOf=v=>typeof v==='string'?v:v?.id;
 async function queueMail(db,key,subject,text,extra={}){try{await db.doc('_stripeSandboxMail/'+key).create({subject,text,status:'queued',attempts:0,...extra});}catch(e){if(e.code!==6)throw e;}}
 async function complete(db,stripe,ref){
  let d=(await ref.get()).data();if(!d?.sessionId)return;
- const s=await stripe.checkout.sessions.retrieve(d.sessionId,{expand:['payment_intent']});
- if(s.livemode||s.metadata?.mwaDonation!==ref.id||s.metadata?.integration!=='mwa-sandbox-v1'||s.amount_total!==d.amount||s.currency!=='aud')throw Error('Session mismatch');
- if(s.payment_status!=='paid'){if(s.status==='expired')await ref.update({status:'expired',fulfillmentPending:false});return;}
+ const setupOnly=d.donationMode==='recurring_only';
+ const s=await stripe.checkout.sessions.retrieve(d.sessionId,{expand:[setupOnly?'setup_intent':'payment_intent']});
+ const verified=require('./donation-verification').verifySession(s,d,ref.id);
+ if(!verified.ready){if(s.status==='expired')await ref.update({status:'expired',fulfillmentPending:false});return;}
  const donorEmail=emailAddress(s.customer_details?.email||d.email||d.testEmail||TEST_EMAIL);
  await ref.update({customerId:idOf(s.customer),email:donorEmail,...require('./donation-records').indexFields({...d,email:donorEmail,customerId:idOf(s.customer)},ref.id)});d.email=donorEmail;
- let note='No recurring donation was selected.';
+ let note='No recurring donation was selected.',setupIssue=false;
  if(d.recurring){
   try{
    if(!d.scheduleId){
@@ -17,21 +18,21 @@ async function complete(db,stripe,ref){
     if(d.recurring.firstDate<today())throw Error('Selected start date has passed');
     const start=d.scheduleStart??(d.recurring.firstDate===today()?'now':startTimestamp(d.recurring.firstDate));
     if(!d.recurringAttemptAt){await ref.update({recurringAttemptAt:Date.now(),scheduleStart:start});d=(await ref.get()).data();}
-    const method=idOf(s.payment_intent?.payment_method);if(!method)throw Error('No saved payment method');
+    const method=verified.method;if(!method)throw Error('No saved payment method');
     const interval=INTERVALS[d.recurring.frequency];
     const price=await stripe.prices.create({currency:'aud',unit_amount:d.recurring.amount,recurring:interval,product_data:{name:'MWA '+d.fund+' — recurring sandbox donation'},metadata:{mwaDonation:ref.id}},{idempotencyKey:'mwa-price-'+ref.id});
     const schedule=await stripe.subscriptionSchedules.create({customer:idOf(s.customer),start_date:start,end_behavior:'release',default_settings:{default_payment_method:method,collection_method:'charge_automatically'},metadata:{mwaDonation:ref.id},phases:[{items:[{price:price.id,quantity:1}],duration:interval,metadata:{mwaDonation:ref.id}}]},{idempotencyKey:'mwa-schedule-'+ref.id});
     if(schedule.livemode)throw Error('Unexpected live schedule');
     await ref.update({scheduleId:schedule.id,recurringStatus:'scheduled'});d.scheduleId=schedule.id;
    }
-   note=`Your additional recurring donation is scheduled: ${money(d.recurring.amount)} ${d.recurring.frequency}, starting ${d.recurring.firstDate} (Sydney). Future instalments have not yet been paid. Use the private management link below to cancel future instalments. If the first date is within two days, this email is your initial payment notice.`;
+   note=`Your ${setupOnly?'':'additional '}recurring donation is scheduled: ${money(d.recurring.amount)} ${d.recurring.frequency}, starting ${d.recurring.firstDate} (Sydney). Future instalments have not yet been paid. Use the private management link below to cancel future instalments. If the first date is within two days, this email is your initial payment notice.`;
   }catch{
-   await ref.update({recurringStatus:'needs_attention'});
-   note='Your one-off payment succeeded, but recurring setup needs attention. Do not pay the one-off amount again. Contact the MWA administrator to resolve the schedule.';
+   setupIssue=true;await ref.update({recurringStatus:'needs_attention'});
+   note=setupOnly?'Your card authorisation succeeded, but the recurring schedule needs administrator attention. No one-off payment was requested. Do not submit another setup; contact MWA to resolve this.':'Your one-off payment succeeded, but recurring setup needs attention. Do not pay the one-off amount again. Contact the MWA administrator to resolve the schedule.';
   }
  }
- await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nDonation reference: ${require('./donation-records').reference(ref.id)}\nName: ${d.name||'Not recorded'}\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.${d.niaz?.scope==='event'?'\nNiaz event: '+d.niaz.title+' on '+d.niaz.date:''}${d.fitra?'\nFitra category: '+d.fitra.category:''}${d.khums?'\nMarja: '+d.khums.marja+'\nKhums: '+d.khums.type:''}\n\n${note}`,{to:d.email,...(d.recurring?{manageUrl:await require('./donation-management').managementLink(ref)}:{})});
- await ref.update({status:'paid',fulfillmentPending:false});
+ await queueMail(db,'confirmation_'+ref.id,setupOnly?'MWA sandbox recurring donation setup':'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nDonation reference: ${require('./donation-records').reference(ref.id)}\nName: ${d.name||'Not recorded'}\n\n${setupOnly?'No one-off payment was requested. Fund: '+d.fund+'.':'One-off donation successful: '+money(d.amount)+' for '+d.fund+'.'}${d.niaz?.scope==='event'?'\nNiaz event: '+d.niaz.title+' on '+d.niaz.date:''}${d.fitra?'\nFitra category: '+d.fitra.category:''}${d.khums?'\nMarja: '+d.khums.marja+'\nKhums: '+d.khums.type:''}\n\n${note}`,{to:d.email,...(d.recurring?{manageUrl:await require('./donation-management').managementLink(ref)}:{})});
+ await ref.update({status:setupOnly?(setupIssue?'setup_needs_attention':'setup_complete'):'paid',...(setupOnly?{setupVerifiedAt:new Date().toISOString()}:{}),fulfillmentPending:false});
 }
 async function recurringUpdate(db,stripe,ref){
  const d=ref.data();if(!d.scheduleId||d.recurringStatus==='canceled')return;
@@ -100,7 +101,7 @@ async function run(db,stripe){
   await events(db,stripe);
   const [pending,legacy]=await Promise.all([db.collection('_stripeSandboxDonations').where('fulfillmentPending','==',true).limit(20).get(),db.collection('_stripeSandboxDonations').where('status','==','awaiting_payment').limit(20).get()]);
   for(const d of new Map([...pending.docs,...legacy.docs].map(d=>[d.id,d])).values()){try{await complete(db,stripe,d.ref);if(!d.data().sessionId&&Date.now()-d.data().createdAt>86400000)await d.ref.update({status:'expired',fulfillmentPending:false});}catch{await d.ref.update({lastCheckError:'Payment verification delayed'});}}
-  const state=(await lock.get()).data();let q=db.collection('_stripeSandboxDonations').where('status','==','paid').orderBy('__name__');if(state.cursor)q=q.startAfter(state.cursor);
+  const state=(await lock.get()).data();let q=db.collection('_stripeSandboxDonations').where('status','in',['paid','setup_complete']).orderBy('__name__');if(state.cursor)q=q.startAfter(state.cursor);
   const paid=await q.limit(20).get();for(const d of paid.docs){try{await recurringUpdate(db,stripe,d);}catch{await d.ref.update({lastCheckError:'Recurring verification delayed'});}}
   await lock.update({cursor:paid.size===20?paid.docs.at(-1).id:null});
   await mail(db,stripe);

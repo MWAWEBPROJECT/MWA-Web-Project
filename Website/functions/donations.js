@@ -11,8 +11,9 @@ function cents(value){if(!/^(?:0|[1-9]\d{0,5})(?:\.\d{1,2})?$/.test(String(value
 function validate(input,now=new Date()){
  if(!input||!FUNDS.includes(input.fund))throw fault('Choose a valid fund.');
  if(typeof input.recurringOptIn!=='boolean')throw fault('Choose whether to add recurring donations.');
+ const donationMode=input.donationMode??(input.recurringOptIn?'both':'one_off');if(!['one_off','recurring_only','both'].includes(donationMode)||input.recurringOptIn!==(donationMode!=='one_off'))throw fault('Choose one-off, recurring only, or both.');
  const name=String(input.name||'').trim(),notes=String(input.notes||'').trim(),phone=require('./donation-records').mobile(input.mobile);if(!name||name.length>100)throw fault('Enter your name (up to 100 characters).');if(notes.length>2000)throw fault('Notes must be under 2,000 characters.');if(phone&&!/^\+[1-9]\d{7,14}$/.test(phone))throw fault('Enter an Australian mobile or an international number starting with +.');
- const value={name,mobile:phone,notes,email:emailAddress(input.email),fund:input.fund,amount:cents(input.amount),recurring:null};
+ const value={donationMode,name,mobile:phone,notes,email:emailAddress(input.email),fund:input.fund,amount:donationMode==='recurring_only'?0:cents(input.amount),recurring:null};
  if(input.fund==='Niaz Contribution'){const n=input.niaz;if(!n||!['general','event'].includes(n.scope))throw fault('Choose general Niaz or a specific event.');value.niaz={scope:n.scope};if(n.scope==='event'){if(!require('./donation-records').validDate(n.date)||!/^[A-Za-z0-9_-]{1,128}$/.test(n.eventId||''))throw fault('Choose an event date and event.');if(input.recurringOptIn)throw fault('Event-specific Niaz donations are one-off only.');value.niaz={scope:'event',date:n.date,eventId:n.eventId};}}
  if(input.fund==='Khums Contribution'){const k=input.khums;if(!k||!['Ayatullah Syed Ali Sistani','Ayatullah Syed Ali Khamenei'].includes(k.marja)||!['Sehm-e-Imam','Sehm-e-Sadat','Both Sehm'].includes(k.type))throw fault('Choose your Marja and Khums type.');value.khums={marja:k.marja,type:k.type};}
  if(input.fund==='Fitra'){if(!['Syed','Non-Syed'].includes(input.fitra?.category))throw fault('Choose Syed or Non-Syed for Fitra.');value.fitra={category:input.fitra.category};}
@@ -29,7 +30,8 @@ function startTimestamp(date){ // 09:00 Sydney, including daylight-saving transi
 const money=n=>new Intl.NumberFormat('en-AU',{style:'currency',currency:'AUD'}).format(n/100);
 function checkoutParams(d,id){
  const r=d.recurring;
- const consent=r?`Additional recurring donation: ${money(r.amount)} ${r.frequency}, first date ${r.firstDate} (Sydney). You authorise charging this saved card automatically until cancelled. Contact ${TEST_EMAIL} to cancel. ${r.firstDate===today()?'The first recurring charge is also due today.':''}`:'One-off donation only. No recurring authorisation.';
+ const consent=r?`${d.donationMode==='recurring_only'?'Recurring donation':'Additional recurring donation'}: ${money(r.amount)} ${r.frequency}, first date ${r.firstDate} (Sydney). You authorise charging this saved card automatically until cancelled. Contact ${TEST_EMAIL} to cancel. ${r.firstDate===today()?'The first recurring charge is also due today.':''}`:'One-off donation only. No recurring authorisation.';
+ if(d.donationMode==='recurring_only')return {mode:'setup',currency:'aud',excluded_payment_method_types:EXCLUDED_METHODS,wallet_options:{link:{display:'never'}},customer_creation:'always',customer_email:d.email,metadata:{mwaDonation:id,integration:'mwa-sandbox-v1'},client_reference_id:id,setup_intent_data:{metadata:{mwaDonation:id,integration:'mwa-sandbox-v1'}},custom_text:{submit:{message:'TEST SETUP - no one-off payment. '+consent}},success_url:SITE+'/?donation_result='+id+'#donate',cancel_url:SITE+'/?donation_cancelled=1#donate'};
  return {mode:'payment',excluded_payment_method_types:EXCLUDED_METHODS,wallet_options:{link:{display:'never'}},customer_creation:'always',customer_email:d.email,
  line_items:[{price_data:{currency:'aud',unit_amount:d.amount,product_data:{name:'MWA '+d.fund+' — sandbox donation'}},quantity:1}],
  metadata:{mwaDonation:id,integration:'mwa-sandbox-v1'},client_reference_id:id,
@@ -40,17 +42,16 @@ function checkoutParams(d,id){
 async function rateLimit(db,ip){const bucket=Math.floor(Date.now()/3600000);const id=createHash('sha256').update(ip+':'+bucket).digest('hex');const ref=db.doc('_stripeSandboxLimits/'+id);await db.runTransaction(async tx=>{const s=await tx.get(ref);const count=s.data()?.count||0;if(count>=10)throw fault('Too many checkout attempts. Please try again in an hour.',429);tx.set(ref,{count:count+1,expiresAt:new Date(Date.now()+7200000)});});}
 async function paymentStatus(db,stripe,id){
  const ref=db.doc('_stripeSandboxDonations/'+id);let d=(await ref.get()).data();if(!d)throw fault('Donation reference not found.',404);
- // Verify payment independently of mail/schedule fulfilment. Never advance the
- // worker's status here: it must still finish its idempotent background work.
- if(d.status!=='paid'&&!d.paymentVerifiedAt&&d.sessionId){
+ const setupOnly=d.donationMode==='recurring_only';
+ if(setupOnly){
+  if(!d.setupVerifiedAt&&d.sessionId){const session=await stripe.checkout.sessions.retrieve(d.sessionId,{expand:['setup_intent']},{timeout:10000,maxNetworkRetries:0});const verified=require('./donation-verification').verifySession(session,d,id);if(verified.ready){await ref.update({setupVerifiedAt:new Date().toISOString(),status:'setup_authorised',fulfillmentPending:true});d=(await ref.get()).data();}}
+  // Fulfil the saved-card schedule immediately on return; idempotency keys also protect concurrent worker retries.
+  if(d.setupVerifiedAt&&d.fulfillmentPending){await require('./donations-worker').complete(db,stripe,ref);d=(await ref.get()).data();}
+ }else if(d.status!=='paid'&&!d.paymentVerifiedAt&&d.sessionId){
   const session=await stripe.checkout.sessions.retrieve(d.sessionId,{}, {timeout:10000,maxNetworkRetries:0});
-  if(session.livemode!==false||session.metadata?.mwaDonation!==id||session.metadata?.integration!=='mwa-sandbox-v1'||session.amount_total!==d.amount||session.currency!=='aud')throw Error('Session mismatch');
-  if(session.payment_status==='paid'){
-   await ref.update({paymentVerifiedAt:new Date().toISOString(),status:'paid',fulfillmentPending:true});
-   d=(await ref.get()).data();
-  }
+  if(require('./donation-verification').verifySession(session,d,id).ready){await ref.update({paymentVerifiedAt:new Date().toISOString(),status:'paid',fulfillmentPending:true});d=(await ref.get()).data();}
  }
- return {status:d.status==='paid'||d.paymentVerifiedAt?'paid':d.status,recurring:d.recurring?d.recurringStatus:null,fulfillmentPending:d.fulfillmentPending===true||d.status!=='paid',sandbox:true};
+ return {status:setupOnly?d.status:d.status==='paid'||d.paymentVerifiedAt?'paid':d.status,donationMode:d.donationMode||(d.recurring?'both':'one_off'),recurring:d.recurring?d.recurringStatus:null,firstDate:d.recurring?.firstDate||null,fulfillmentPending:d.fulfillmentPending===true||(!setupOnly&&d.status!=='paid'),sandbox:true};
 }
 function apiHandler({db,stripe}){return async(req,res)=>{
  res.set('Cache-Control','no-store');
@@ -71,7 +72,7 @@ function apiHandler({db,stripe}){return async(req,res)=>{
   await rateLimit(db,req.ip||'unknown');
   const ref=db.doc('_stripeSandboxDonations/'+id),hash=createHash('sha256').update(JSON.stringify(d)).digest('hex');
   let existing;
-  await db.runTransaction(async tx=>{const s=await tx.get(ref);existing=s.data();if(existing){if(existing.hash!==hash)throw fault('Checkout details changed. Please start again.',409);if(Date.now()-existing.createdAt>23*3600000)throw fault('Checkout expired. Please start again.',409);}else tx.create(ref,{...d,...require('./donation-records').indexFields(d,id),originalEmail:d.email,hash,createdAt:Date.now(),status:'awaiting_payment',fulfillmentPending:true,recurringStatus:d.recurring?'not_started':null,consentVersion:'2026-11-02'});});
+  await db.runTransaction(async tx=>{const s=await tx.get(ref);existing=s.data();if(existing){if(existing.hash!==hash)throw fault('Checkout details changed. Please start again.',409);if(Date.now()-existing.createdAt>23*3600000)throw fault('Checkout expired. Please start again.',409);}else tx.create(ref,{...d,...require('./donation-records').indexFields(d,id),originalEmail:d.email,hash,createdAt:Date.now(),status:d.donationMode==='recurring_only'?'awaiting_setup':'awaiting_payment',fulfillmentPending:true,recurringStatus:d.recurring?'not_started':null,consentVersion:'2026-11-02'});});
   if(existing?.url)return res.json({url:existing.url});
   const session=await stripe.checkout.sessions.create(checkoutParams(d,id),{idempotencyKey:'mwa-checkout-'+id});
   if(session.livemode||!session.url?.startsWith('https://checkout.stripe.com/'))throw Error('Unexpected checkout mode');
