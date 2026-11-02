@@ -4,8 +4,8 @@
 # MWA Web Project — Codex / Copilot handover
 
 Last updated: **2 November 2026, Australia/Sydney** by Codex.
-Latest application commit verified locally: **07257d7** (already pushed to origin/main).
-Current task: Stripe sandbox credential verification and webhook bootstrap. Restricted key is stored and read access verified; payment checkout and fulfilment remain unimplemented. Bootstrap function and website routing deployed; public GET 405 / POST 503 confirmed. Await signing secret; payments remain disabled. Do not recursively change this document just to insert its own commit hash.
+Latest application commit verified locally: **c95c9b9** (already pushed to origin/main).
+Current task: webhook signing secret saved and format verified. Signed sandbox event receiver implemented; 12 targeted tests passed. Receiver deployed and public signature checks passed. Donation checkout remains preview-only and payment fulfilment/reminders are not implemented. Do not recursively change this document just to insert its own commit hash.
 
 ## Start here
 
@@ -152,7 +152,18 @@ For future entries include blockers and unsaved/uncommitted work explicitly. Kee
 
 - User confirmed sandbox MWA WEB PROJECT, key saved successfully, test notification address admin@muhammadiwelfare.org.au. Secret value was never displayed or saved to source. Sandbox prefix checked and read requests to customers, prices and subscription_schedules returned HTTP 200. No payment/customer was created and no mail sent. Write permissions remain unverified.
 - Added pinned stripe 23.1.0 SDK (API 2026-10-28.endive) and bootstrap stripeSandboxWebhook, routed at /api/donations/stripe-webhook. This is deliberately NOT a payment handler: GET returns 405; every POST returns 503 until signed-event processing is implemented. It does not store/acknowledge events or change donations.
-- STRIPE_SANDBOX_WEBHOOK_SECRET is still required. Never fabricate a placeholder secret or return success for unprocessed payments. Configure Snapshot events on the sandbox account, then bind the secret and implement verified raw-body processing/idempotent checkout, schedules and notifications before accepting payments. Existing donation preview stays unchanged.
+- Historical bootstrap checkpoint: STRIPE_SANDBOX_WEBHOOK_SECRET was still required (now saved; see receiver checkpoint below). Never fabricate a placeholder secret or return success for unprocessed payments. Configure Snapshot events on the sandbox account, then bind the secret and implement verified raw-body processing/idempotent checkout, schedules and notifications before accepting payments. Existing donation preview stays unchanged.
 - Syntax checks and git diff --check passed. Named function stripeSandboxWebhook and website Hosting deployed successfully. Verified the custom-domain route returns GET 405 and POST 503 with the expected JSON. No financial actions or emails triggered. Changes included in the sandbox bootstrap commit; push recorded by the release operation. Detailed instructions: Stripe - Sandbox Setup Guide.md in this folder.
 
 | 2026-11-02 | Codex | Verified stored sandbox key via three read-only Stripe calls; added locked webhook bootstrap, routing and SDK; saved local Stripe setup guide | Function and website routing deployed, public 405/503 verified; included in sandbox bootstrap commit | User saves webhook signing secret; implement verified payment processing before enabling checkout |
+
+
+### Signed webhook receiver checkpoint — 2 November 2026
+
+- User saved STRIPE_SANDBOX_WEBHOOK_SECRET; securely confirmed whsec_ format without displaying it. Bound it only to stripeSandboxWebhook via Firebase defineSecret.
+- Replaced bootstrap with raw-body Stripe SDK verification and sandbox-only event validation. Supported events are atomically stored under server-only _stripeSandboxEvents/{eventId}; duplicates do not reset status. ACK occurs after durable storage; storage errors return 503 for Stripe retry. Unsupported signed events are ignored. Never log secrets or event bodies.
+- This is an intake queue ONLY: status pending, full snapshot retained as JSON string. No worker exists yet; do not enable checkout or describe event receipt as donation fulfilment. Future worker must validate MWA session metadata/account, retrieve current Stripe state, handle out-of-order events, and deduplicate financial/mail actions independently of delivery IDs. Process queued events before accepting donations. Existing default-deny rules do not expose this collection.
+- Files: Website/functions/stripe-sandbox.js, stripe-webhook.js, stripe-webhook.test.js. Twelve tests passed (valid, wrong/missing/expired signatures, live-mode rejection, method/configuration, malformed snapshot, unsupported event, storage retry and atomic duplicate handling). Corrected SDK method binding after initial test failure; rerun all 12 passed.
+- Named webhook function deployed successfully. Public unsigned request returned 400; a locally signed unsupported configuration probe returned 200/ignored, proving runtime secret binding without storing events, creating payments or sending email. No genuine Stripe-origin event or real Firestore queue write was exercised by this probe. Genuine Stripe-origin delivery still needs checking; local test signatures alone do not prove the saved secret belongs to the configured Stripe destination.
+
+| 2026-11-02 | Codex | Bound saved webhook secret; signed sandbox intake with atomic deduplication; 12 tests passed; public unsigned 400 and synthetic signed 200/ignored verified | Receiver deployed; changes committed and pushed with this handover | Confirm genuine Stripe delivery, then implement checkout, queue worker, schedules and notifications; payments still disabled |

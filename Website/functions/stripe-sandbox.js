@@ -1,10 +1,8 @@
 const {onRequest}=require('firebase-functions/v2/https');
-
-// Bootstrap endpoint for registering the sandbox destination in Stripe.
-// Do not acknowledge events until signature verification and payment fulfilment
-// are implemented together. Stripe retries non-2xx responses.
-exports.stripeSandboxWebhook=onRequest({region:'australia-southeast1',maxInstances:2},(req,res)=>{
-  res.set('Cache-Control','no-store');
-  if(req.method!=='POST')return res.status(405).set('Allow','POST').json({error:'Method not allowed.'});
-  return res.status(503).json({error:'Sandbox payment integration is not enabled yet.'});
-});
+const {defineSecret}=require('firebase-functions/params');
+const {getFirestore}=require('firebase-admin/firestore');
+const {webhookHandler,storeEvent}=require('./stripe-webhook');
+const webhookSecret=defineSecret('STRIPE_SANDBOX_WEBHOOK_SECRET');
+exports.stripeSandboxWebhook=onRequest({
+ region:'australia-southeast1',maxInstances:2,secrets:[webhookSecret]
+},webhookHandler({secret:()=>webhookSecret.value(),store:event=>storeEvent(getFirestore(),event)}));
