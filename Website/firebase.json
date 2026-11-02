@@ -17,6 +17,13 @@
           }
         },
         {
+          "source": "/api/donations/stripe-webhook",
+          "function": {
+            "functionId": "stripeSandboxWebhook",
+            "region": "australia-southeast1"
+          }
+        },
+        {
           "source": "/api/**",
           "function": {
             "functionId": "websiteCmsApi",

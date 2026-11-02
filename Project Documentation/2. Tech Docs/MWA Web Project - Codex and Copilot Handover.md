@@ -4,8 +4,8 @@
 # MWA Web Project — Codex / Copilot handover
 
 Last updated: **2 November 2026, Australia/Sydney** by Codex.
-Latest application commit verified locally: **b181630** (already pushed to origin/main).
-Current task: optional recurring-donation preview controls. Production build and browser checks passed; website-only deployment completed and public HTML verified. Stripe remains disconnected. Do not recursively change this document just to insert its own commit hash.
+Latest application commit verified locally: **07257d7** (already pushed to origin/main).
+Current task: Stripe sandbox credential verification and webhook bootstrap. Restricted key is stored and read access verified; payment checkout and fulfilment remain unimplemented. Bootstrap function and website routing deployed; public GET 405 / POST 503 confirmed. Await signing secret; payments remain disabled. Do not recursively change this document just to insert its own commit hash.
 
 ## Start here
 
@@ -86,7 +86,7 @@ Latest targeted checks: 2 Admin Team render checks plus 9 email action/decision 
 
 ## Pending work / next assistant action
 
-**Stripe donations — sandbox created by user; checkout backend and credentials are not connected.** User has Developer access. The donation preview now supports an unchecked recurring opt-in beneath the default one-off donation. Cards, Apple Pay and Google Pay will be through Stripe; no separate Amazon Pay integration requested. Proposed architecture: amount/frequency chosen on MWA website, Stripe-hosted Checkout, Firebase backend and verified webhooks. Use an isolated sandbox first. Do not change keys/settings used by the existing official website.
+**Stripe donations — sandbox MWA WEB PROJECT; restricted key saved in STRIPE_SANDBOX_SECRET_KEY and sandbox read access verified. Checkout backend is not connected.** User has Developer access. The donation preview now supports an unchecked recurring opt-in beneath the default one-off donation. Cards, Apple Pay and Google Pay will be through Stripe; no separate Amazon Pay integration requested. Proposed architecture: amount/frequency chosen on MWA website, Stripe-hosted Checkout, Firebase backend and verified webhooks. Use an isolated sandbox first. Do not change keys/settings used by the existing official website.
 
 Confirmed 2 November: retain current website settings (AUD, five existing funds, suggested $25/$50/$100/$250 and existing amount limits). One-off donation stays default. Donor may explicitly opt into an additional recurring donation BEFORE Stripe checkout, with a separate amount, frequency and first payment date, all explicitly entered/selected. Proposed UI frequencies: weekly, fortnightly, monthly, yearly. The chosen fund applies to both. Never silently copy the one-off amount or preselect recurring consent. First date may be today or a future Sydney date; if today, future Stripe checkout must clearly disclose both charges due today. Preview does not create charges or authorisation. Remaining: securely configure sandbox credentials, build checkout/webhooks and explicit schedule/consent handling, confirm finance/support addresses and receipt wording. Obtain credentials through direct secret-manager entry, NEVER chat or Git. Then implement sandbox integration, provide the exact webhook URL/events, test and separately agree live activation. Finance retains account verification/bank/payout responsibilities. Never imply all donations are tax-deductible without finance-approved wording.
 
@@ -146,3 +146,13 @@ After deployment, inspect completion output and live behaviour. A vanished termi
 For future entries include blockers and unsaved/uncommitted work explicitly. Keep the current-state sections accurate, not just an ever-growing log. If another assistant made changes, reconcile its entry rather than overwriting it. A local AGENTS.md in the scratch workspace also routes Codex to this canonical handover; it is machine-local, not part of the application repository. Instructions guide assistants when working; this is not an unattended file watcher or a guarantee that an assistant with disabled custom instructions will follow them.
 
 | 2026-11-02 | Codex | User confirmed sandbox created; added explicit recurring opt-in, separate amount/frequency/first-date controls to donation preview, preserving current funds and one-off defaults | Build and browser checks passed: default one-off, separate $50/$20 monthly amounts, 1 December start date and required-date validation. Hosting deployed and live HTML verified; no payment credentials or checkout backend connected | Connect Stripe sandbox securely; implement verified payment confirmation and two-day reminder emails |
+
+
+### Stripe setup checkpoint — 2 November 2026
+
+- User confirmed sandbox MWA WEB PROJECT, key saved successfully, test notification address admin@muhammadiwelfare.org.au. Secret value was never displayed or saved to source. Sandbox prefix checked and read requests to customers, prices and subscription_schedules returned HTTP 200. No payment/customer was created and no mail sent. Write permissions remain unverified.
+- Added pinned stripe 23.1.0 SDK (API 2026-10-28.endive) and bootstrap stripeSandboxWebhook, routed at /api/donations/stripe-webhook. This is deliberately NOT a payment handler: GET returns 405; every POST returns 503 until signed-event processing is implemented. It does not store/acknowledge events or change donations.
+- STRIPE_SANDBOX_WEBHOOK_SECRET is still required. Never fabricate a placeholder secret or return success for unprocessed payments. Configure Snapshot events on the sandbox account, then bind the secret and implement verified raw-body processing/idempotent checkout, schedules and notifications before accepting payments. Existing donation preview stays unchanged.
+- Syntax checks and git diff --check passed. Named function stripeSandboxWebhook and website Hosting deployed successfully. Verified the custom-domain route returns GET 405 and POST 503 with the expected JSON. No financial actions or emails triggered. Changes included in the sandbox bootstrap commit; push recorded by the release operation. Detailed instructions: Stripe - Sandbox Setup Guide.md in this folder.
+
+| 2026-11-02 | Codex | Verified stored sandbox key via three read-only Stripe calls; added locked webhook bootstrap, routing and SDK; saved local Stripe setup guide | Function and website routing deployed, public 405/503 verified; included in sandbox bootstrap commit | User saves webhook signing secret; implement verified payment processing before enabling checkout |
