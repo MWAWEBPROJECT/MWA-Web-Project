@@ -24,13 +24,18 @@ async function cancelRecurring(db,stripe,ref,actor){
  return {cancelled:true};
 }
 async function handle(req,res,{db,stripe,path,verifyToken=(token)=>getAuth().verifyIdToken(token,true)}){
- if(!['manage','cancel','admin','admin-cancel'].includes(path))return false;
+ if(!['manage','cancel','admin','admin-cancel','admin-export'].includes(path))return false;
  if(!['GET','POST'].includes(req.method))throw fault('Method not allowed.',405);
  const admin=path.startsWith('admin');let actor={};
  const bearer=/^Bearer (.+)$/.exec(req.get('Authorization')||'')?.[1];
  if(admin){let token;try{token=await verifyToken(bearer||'');}catch{throw fault('Admin sign-in required.',401);}actor=await resolveAdmin(db,token.uid,token,'donations');if(!actor)throw fault('Donation Administration access required.',403);}
  if(path==='admin'&&req.method==='GET'){
   res.json(await require('./donation-records').listRecords(db,req.query));return true;
+ }
+ if(path==='admin-export'){
+  if(req.method!=='POST'||![SITE,'https://mwa-community-web.web.app','https://mwa-community-web.firebaseapp.com'].includes(req.get('Origin'))||!req.is('application/json'))throw fault('Open this action from the MWA website.',403);
+  const {format,count}=req.body||{};if(!['xlsx','pdf'].includes(format)||!Number.isInteger(count)||count<0||count>20000)throw fault('Invalid export details.');
+  await db.collection('auditLog').add({module:'donations',entityType:'export',entityId:format,action:'donation.export_prepared',userId:actor.uid,userEmail:actor.email,timestamp:new Date().toISOString(),note:format.toUpperCase()+' export prepared: '+count+' matching records. Browser download completion is not tracked.'});res.json({ok:true});return true;
  }
  const id=String(req.method==='GET'?req.query.id:req.body?.id||'');if(!/^[a-f0-9-]{36}$/.test(id))throw fault('Invalid donation reference.');
  const ref=db.doc('_stripeSandboxDonations/'+id),d=(await ref.get()).data();if(!d)throw fault('Donation not found.',404);

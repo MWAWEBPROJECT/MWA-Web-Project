@@ -6,7 +6,7 @@ async function complete(db,stripe,ref){
  let d=(await ref.get()).data();if(!d?.sessionId)return;
  const s=await stripe.checkout.sessions.retrieve(d.sessionId,{expand:['payment_intent']});
  if(s.livemode||s.metadata?.mwaDonation!==ref.id||s.metadata?.integration!=='mwa-sandbox-v1'||s.amount_total!==d.amount||s.currency!=='aud')throw Error('Session mismatch');
- if(s.payment_status!=='paid'){if(s.status==='expired')await ref.update({status:'expired'});return;}
+ if(s.payment_status!=='paid'){if(s.status==='expired')await ref.update({status:'expired',fulfillmentPending:false});return;}
  const donorEmail=emailAddress(s.customer_details?.email||d.email||d.testEmail||TEST_EMAIL);
  await ref.update({customerId:idOf(s.customer),email:donorEmail,...require('./donation-records').indexFields({...d,email:donorEmail,customerId:idOf(s.customer)},ref.id)});d.email=donorEmail;
  let note='No recurring donation was selected.';
@@ -30,8 +30,8 @@ async function complete(db,stripe,ref){
    note='Your one-off payment succeeded, but recurring setup needs attention. Do not pay the one-off amount again. Contact the MWA administrator to resolve the schedule.';
   }
  }
- await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nDonation reference: ${require('./donation-records').reference(ref.id)}\nName: ${d.name||'Not recorded'}\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.${d.niaz?.scope==='event'?'\nNiaz event: '+d.niaz.title+' on '+d.niaz.date:''}${d.khums?'\nMarja: '+d.khums.marja+'\nKhums: '+d.khums.type:''}\n\n${note}`,{to:d.email,...(d.recurring?{manageUrl:await require('./donation-management').managementLink(ref)}:{})});
- await ref.update({status:'paid'});
+ await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nDonation reference: ${require('./donation-records').reference(ref.id)}\nName: ${d.name||'Not recorded'}\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.${d.niaz?.scope==='event'?'\nNiaz event: '+d.niaz.title+' on '+d.niaz.date:''}${d.fitra?'\nFitra category: '+d.fitra.category:''}${d.khums?'\nMarja: '+d.khums.marja+'\nKhums: '+d.khums.type:''}\n\n${note}`,{to:d.email,...(d.recurring?{manageUrl:await require('./donation-management').managementLink(ref)}:{})});
+ await ref.update({status:'paid',fulfillmentPending:false});
 }
 async function recurringUpdate(db,stripe,ref){
  const d=ref.data();if(!d.scheduleId||d.recurringStatus==='canceled')return;
@@ -98,8 +98,8 @@ async function run(db,stripe){
  await db.runTransaction(async tx=>{const s=await tx.get(lock);if(s.data()?.until>Date.now())return;tx.set(lock,{lease,until:Date.now()+300000},{merge:true});acquired=true;});if(!acquired)return;
  try{
   await events(db,stripe);
-  const pending=await db.collection('_stripeSandboxDonations').where('status','==','awaiting_payment').limit(20).get();
-  for(const d of pending.docs){try{await complete(db,stripe,d.ref);if(!d.data().sessionId&&Date.now()-d.data().createdAt>86400000)await d.ref.update({status:'expired'});}catch{await d.ref.update({lastCheckError:'Payment verification delayed'});}}
+  const [pending,legacy]=await Promise.all([db.collection('_stripeSandboxDonations').where('fulfillmentPending','==',true).limit(20).get(),db.collection('_stripeSandboxDonations').where('status','==','awaiting_payment').limit(20).get()]);
+  for(const d of new Map([...pending.docs,...legacy.docs].map(d=>[d.id,d])).values()){try{await complete(db,stripe,d.ref);if(!d.data().sessionId&&Date.now()-d.data().createdAt>86400000)await d.ref.update({status:'expired',fulfillmentPending:false});}catch{await d.ref.update({lastCheckError:'Payment verification delayed'});}}
   const state=(await lock.get()).data();let q=db.collection('_stripeSandboxDonations').where('status','==','paid').orderBy('__name__');if(state.cursor)q=q.startAfter(state.cursor);
   const paid=await q.limit(20).get();for(const d of paid.docs){try{await recurringUpdate(db,stripe,d);}catch{await d.ref.update({lastCheckError:'Recurring verification delayed'});}}
   await lock.update({cursor:paid.size===20?paid.docs.at(-1).id:null});
