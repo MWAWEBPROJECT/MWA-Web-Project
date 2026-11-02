@@ -34,14 +34,28 @@ function checkoutParams(d,id){
  success_url:SITE+'/?donation_result='+id+'#donate',cancel_url:SITE+'/?donation_cancelled=1#donate'};
 }
 async function rateLimit(db,ip){const bucket=Math.floor(Date.now()/3600000);const id=createHash('sha256').update(ip+':'+bucket).digest('hex');const ref=db.doc('_stripeSandboxLimits/'+id);await db.runTransaction(async tx=>{const s=await tx.get(ref);const count=s.data()?.count||0;if(count>=10)throw fault('Too many checkout attempts. Please try again in an hour.',429);tx.set(ref,{count:count+1,expiresAt:new Date(Date.now()+7200000)});});}
+async function paymentStatus(db,stripe,id){
+ const ref=db.doc('_stripeSandboxDonations/'+id);let d=(await ref.get()).data();if(!d)throw fault('Donation reference not found.',404);
+ // Verify payment independently of mail/schedule fulfilment. Never advance the
+ // worker's status here: it must still finish its idempotent background work.
+ if(d.status!=='paid'&&!d.paymentVerifiedAt&&d.sessionId){
+  const session=await stripe.checkout.sessions.retrieve(d.sessionId,{}, {timeout:10000,maxNetworkRetries:0});
+  if(session.livemode!==false||session.metadata?.mwaDonation!==id||session.metadata?.integration!=='mwa-sandbox-v1'||session.amount_total!==d.amount||session.currency!=='aud')throw Error('Session mismatch');
+  if(session.payment_status==='paid'){
+   await ref.update({paymentVerifiedAt:new Date().toISOString()});
+   d=(await ref.get()).data();
+  }
+ }
+ return {status:d.status==='paid'||d.paymentVerifiedAt?'paid':d.status,recurring:d.recurring?d.recurringStatus:null,fulfillmentPending:d.status!=='paid',sandbox:true};
+}
 function apiHandler({db,stripe}){return async(req,res)=>{
  res.set('Cache-Control','no-store');
  try{
   const path=req.path.split('/').pop();
+  if(await require('./donation-management').handle(req,res,{db,stripe,path}))return;
   if(req.method==='GET'&&path==='status'){
    const id=String(req.query.id||'');if(!/^[a-f0-9-]{36}$/.test(id))throw fault('Invalid donation reference.');
-   const d=(await db.doc('_stripeSandboxDonations/'+id).get()).data();if(!d)throw fault('Donation reference not found.',404);
-   return res.json({status:d.status,recurring:d.recurring?d.recurringStatus:null,sandbox:true});
+   return res.json(await paymentStatus(db,stripe,id));
   }
   if(req.method!=='POST'||path!=='checkout')return res.status(405).json({error:'Method not allowed.'});
   if(![SITE,'https://mwa-community-web.web.app','https://mwa-community-web.firebaseapp.com'].includes(req.get('Origin')))throw fault('Open checkout from the MWA website.',403);
@@ -58,4 +72,4 @@ function apiHandler({db,stripe}){return async(req,res)=>{
   await ref.update({sessionId:session.id,url:session.url});return res.json({url:session.url});
  }catch(e){return res.status(e.status||503).json({error:e.status?e.message:'Sandbox checkout is temporarily unavailable. Please retry.'});}
 };}
-module.exports={emailAddress,SITE,TEST_EMAIL,INTERVALS,today,validate,startTimestamp,checkoutParams,apiHandler,money};
+module.exports={paymentStatus,emailAddress,SITE,TEST_EMAIL,INTERVALS,today,validate,startTimestamp,checkoutParams,apiHandler,money};

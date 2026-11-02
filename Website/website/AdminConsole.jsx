@@ -13,7 +13,7 @@ export const adminModules=[
  {name:'Tools & Automation',icon:Workflow,description:'Manage the admin team and review activity across modules.',href:'/tools-automation/'},
  {name:'Maintenance Administration',icon:Wrench,description:'Coordinate facility care and maintenance requests.'},
  {name:'Expense Administration',icon:Receipt,description:'Manage expenses and related records.'},
- {name:'Donation Administration',icon:HeartHandshake,description:'Manage donations and contribution records.'},
+ {name:'Donation Administration',icon:HeartHandshake,description:'Review sandbox donations and cancel recurring contributions.',href:'/admin-login?module=donations'},
  {name:'Social Media Administration',icon:Megaphone,description:'Coordinate community communications and updates.'},
  {name:'Speakers & Reciters',icon:MicVocal,description:'Coordinate speakers, reciters and programme participation.'},
  {name:'Website CMS',icon:PanelsTopLeft,description:'Publish website content, branding and appearance.',href:'/cms'}

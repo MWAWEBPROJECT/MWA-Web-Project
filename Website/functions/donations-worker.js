@@ -24,17 +24,17 @@ async function complete(db,stripe,ref){
     if(schedule.livemode)throw Error('Unexpected live schedule');
     await ref.update({scheduleId:schedule.id,recurringStatus:'scheduled'});d.scheduleId=schedule.id;
    }
-   note=`Your additional recurring donation is scheduled: ${money(d.recurring.amount)} ${d.recurring.frequency}, starting ${d.recurring.firstDate} (Sydney). Future instalments have not yet been paid. Contact ${TEST_EMAIL} to cancel. If the first date is within two days, this email is your initial payment notice.`;
+   note=`Your additional recurring donation is scheduled: ${money(d.recurring.amount)} ${d.recurring.frequency}, starting ${d.recurring.firstDate} (Sydney). Future instalments have not yet been paid. Use the private management link below to cancel future instalments. If the first date is within two days, this email is your initial payment notice.`;
   }catch{
    await ref.update({recurringStatus:'needs_attention'});
    note='Your one-off payment succeeded, but recurring setup needs attention. Do not pay the one-off amount again. Contact the MWA administrator to resolve the schedule.';
   }
  }
- await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.\n\n${note}`,{to:d.email});
+ await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.\n\n${note}`,{to:d.email,...(d.recurring?{manageUrl:await require('./donation-management').managementLink(ref)}:{})});
  await ref.update({status:'paid'});
 }
 async function recurringUpdate(db,stripe,ref){
- const d=ref.data();if(!d.scheduleId)return;
+ const d=ref.data();if(!d.scheduleId||d.recurringStatus==='canceled')return;
  const schedule=await stripe.subscriptionSchedules.retrieve(d.scheduleId);
  if(schedule.livemode)throw Error('Unexpected live schedule');
  if(['canceled','aborted','completed'].includes(schedule.status)){await ref.ref.update({recurringStatus:schedule.status});return;}
@@ -48,7 +48,7 @@ async function recurringUpdate(db,stripe,ref){
  if(!next||!Number.isFinite(amount))return;
  const due=today(new Date(next*1000)),twoDays=today(new Date(Date.now()+2*86400000));
  await ref.ref.update({recurringStatus:schedule.status==='not_started'?'scheduled':'active',subscriptionId:subscriptionId||null,nextPaymentDate:due});
- if(due===twoDays)await queueMail(db,'reminder_'+ref.id+'_'+next+'_'+amount,'MWA sandbox recurring donation reminder',`TEST ONLY — no real money will move.\n\nYour next recurring donation of ${money(amount)} for ${d.fund} is scheduled for ${due} (Sydney), in two days. Contact ${TEST_EMAIL} to cancel.`,{to:d.email||d.testEmail||TEST_EMAIL,reminder:{donationId:ref.id,due,amount,next}});
+ if(due===twoDays)await queueMail(db,'reminder_'+ref.id+'_'+next+'_'+amount,'MWA sandbox recurring donation reminder',`TEST ONLY — no real money will move.\n\nYour next recurring donation of ${money(amount)} for ${d.fund} is scheduled for ${due} (Sydney), in two days. Use the private management link below to cancel future instalments.`,{manageUrl:await require('./donation-management').managementLink(ref.ref),to:d.email||d.testEmail||TEST_EMAIL,reminder:{donationId:ref.id,due,amount,next}});
 }
 async function events(db,stripe){
  const batch=await db.collection('_stripeSandboxEvents').where('status','==','pending').limit(20).get();
@@ -60,8 +60,8 @@ async function events(db,stripe){
    const sub=idOf(invoice.parent?.subscription_details?.subscription)||idOf(invoice.subscription);
    if(sub){const found=await db.collection('_stripeSandboxDonations').where('customerId','==',idOf(invoice.customer)).limit(10).get();
     for(const d of found.docs){if(!d.data().scheduleId)continue;const sch=await stripe.subscriptionSchedules.retrieve(d.data().scheduleId);if(sub!==(idOf(sch.subscription)||idOf(sch.released_subscription)))continue;
-     if(invoice.status==='paid')await queueMail(db,'invoice_paid_'+invoice.id,'MWA sandbox recurring donation receipt',`TEST ONLY — no real money moved.\n\nRecurring donation successful: ${money(invoice.amount_paid)} for ${d.data().fund}.`,{to:d.data().email||d.data().testEmail||TEST_EMAIL});
-     else if(['invoice.payment_failed','invoice.payment_action_required'].includes(e.type))await queueMail(db,'invoice_failed_'+invoice.id,'MWA sandbox recurring payment needs attention','TEST ONLY. Your recurring test payment did not complete. Contact the MWA administrator to review the payment.',{to:d.data().email||d.data().testEmail||TEST_EMAIL});
+     if(invoice.status==='paid')await queueMail(db,'invoice_paid_'+invoice.id,'MWA sandbox recurring donation receipt',`TEST ONLY — no real money moved.\n\nRecurring donation successful: ${money(invoice.amount_paid)} for ${d.data().fund}.`,{manageUrl:await require('./donation-management').managementLink(d.ref),to:d.data().email||d.data().testEmail||TEST_EMAIL});
+     else if(['invoice.payment_failed','invoice.payment_action_required'].includes(e.type))await queueMail(db,'invoice_failed_'+invoice.id,'MWA sandbox recurring payment needs attention','TEST ONLY. Your recurring test payment did not complete. Contact the MWA administrator to review the payment.',{manageUrl:await require('./donation-management').managementLink(d.ref),to:d.data().email||d.data().testEmail||TEST_EMAIL});
     }
    }
   }
@@ -87,7 +87,7 @@ async function mail(db,stripe){
   const messageId=doc.id+'@sandbox.muhammadiwelfare.org.au';
   const previous=await gmail('messages?'+new URLSearchParams({q:'in:sent rfc822msgid:'+messageId,maxResults:'1'}));
   if(!previous.messages?.length){
-   const raw=require('./donation-email').buildRaw({to:emailAddress(j.to||TEST_EMAIL),subject:j.subject,text:j.text,messageId});
+   const raw=require('./donation-email').buildRaw({to:emailAddress(j.to||TEST_EMAIL),subject:j.subject,text:j.text,messageId,manageUrl:j.manageUrl});
    await gmail('messages/send',{method:'POST',body:JSON.stringify({raw})});
   }
   await doc.ref.update({status:'sent',sentAt:new Date().toISOString()});

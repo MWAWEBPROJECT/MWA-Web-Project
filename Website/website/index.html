@@ -233,4 +233,4 @@ $$('[data-gallery]').forEach(b=>b.onclick=()=>{openModal(intro(b.dataset.gallery
  document.querySelector('#today-calendar').onclick=()=>window.dispatchEvent(new Event('mwa-calendar-today'));
  window.addEventListener('mwa-content-rendered',updateDates);document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateDates()});setInterval(updateDates,60000);updateDates();sync();
 })();
-</script><script type="module" src="/donations.js"></script></body></html>
+</script><script type="module" src="/donations.js"></script><script type="module" src="/donations-manage.js"></script></body></html>

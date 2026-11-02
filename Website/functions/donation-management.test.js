@@ -1,0 +1,18 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const {cancelRecurring,validToken,handle}=require('./donation-management');
+const {renderHtml,buildRaw}=require('./donation-email');
+function fixture(status='not_started'){
+ const data={scheduleId:'sched',customerId:'cus',email:'admin@muhammadiwelfare.org.au',manageToken:'a'.repeat(64)};
+ const calls=[],mail=new Map();const ref={id:'12345678-1234-1234-1234-123456789abc',get:async()=>({data:()=>data})};
+ const db={doc:id=>id.startsWith('_stripeSandboxDonations/')?ref:{create:async v=>{if(mail.has(id))throw {code:6};mail.set(id,v)}},batch:()=>({update:(_,v)=>Object.assign(data,v),set:()=>{},commit:async()=>{}})};
+ const schedule={id:'sched',customer:'cus',livemode:false,status,released_subscription:'sub'};
+ const stripe={subscriptionSchedules:{retrieve:async()=>schedule,cancel:async(...args)=>{calls.push(args);schedule.status='canceled'}},subscriptions:{retrieve:async()=>({customer:'cus',livemode:false,status:'active'}),cancel:async(...args)=>calls.push(args)}};
+ return {data,ref,db,stripe,calls,mail,schedule};
+}
+test('private token must match exactly',()=>{assert.ok(validToken('a'.repeat(64),'a'.repeat(64)));for(const t of ['',undefined,'b'.repeat(64),'a'])assert.equal(validToken('a'.repeat(64),t),false)});
+for(const state of ['not_started','active','released'])test('cancel '+state+' without final invoice or proration',async()=>{const f=fixture(state);await cancelRecurring(f.db,f.stripe,f.ref,{uid:'admin',email:'admin@example.com'});assert.deepEqual(f.calls[0],[state==='released'?'sub':'sched',{invoice_now:false,prorate:false}]);assert.equal(f.data.recurringStatus,'canceled');assert.equal(f.mail.size,1)});
+test('repeat cancellation does not duplicate mail or Stripe action',async()=>{const f=fixture();await cancelRecurring(f.db,f.stripe,f.ref,{});await cancelRecurring(f.db,f.stripe,f.ref,{});assert.equal(f.calls.length,1);assert.equal(f.mail.size,1)});
+test('live or different customer schedule is rejected',async()=>{for(const patch of [{livemode:true},{customer:'other'}]){const f=fixture();Object.assign(f.schedule,patch);await assert.rejects(()=>cancelRecurring(f.db,f.stripe,f.ref,{}));assert.equal(f.calls.length,0);assert.equal(f.mail.size,0)}});
+test('opening management link never cancels and confirm is mandatory',async()=>{const f=fixture();const req={method:'GET',query:{id:f.ref.id},get:k=>k==='Authorization'?'Bearer '+f.data.manageToken:'https://refreshed.muhammadiwelfare.org.au',is:()=>true};let result;await handle(req,{json:v=>result=v},{...f,path:'manage'});assert.equal(result.canCancel,true);assert.equal(f.calls.length,0);req.method='POST';req.body={id:f.ref.id};await assert.rejects(()=>handle(req,{},{...f,path:'cancel'}),/confirm/);assert.equal(f.calls.length,0)});
+test('invalid private link and unsigned admin requests are rejected',async()=>{const f=fixture();const req={method:'GET',query:{id:f.ref.id},get:()=>''};await assert.rejects(()=>handle(req,{},{...f,path:'manage'}),e=>e.status===403);await assert.rejects(()=>handle(req,{},{...f,path:'admin'}),e=>e.status===401)});
+test('email title and private management button are rendered safely',()=>{const manageUrl='https://refreshed.muhammadiwelfare.org.au/#donation-manage=12345678-1234-1234-1234-123456789abc.'+'a'.repeat(64);const html=renderHtml({subject:'MWA sandbox donation confirmation',text:'Thanks',manageUrl});assert.match(html,/>Donation Confirmation<\/h2>/);assert.match(html,/Manage recurring donation/);assert.throws(()=>buildRaw({to:'admin@example.com',subject:'Confirmation',text:'Thanks',messageId:'test@example.com',manageUrl:'https://evil.example'}));});

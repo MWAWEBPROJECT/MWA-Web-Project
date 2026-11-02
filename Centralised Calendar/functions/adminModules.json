@@ -48,7 +48,7 @@
     {
       "id": "donations",
       "name": "Donation Administration",
-      "live": false
+      "live": true
     },
     {
       "id": "social-media",
