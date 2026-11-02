@@ -2,7 +2,7 @@ const {createHash}=require('node:crypto');
 const EXCLUDED_METHODS=['acss_debit', 'affirm', 'afterpay_clearpay', 'alipay', 'alma', 'amazon_pay', 'au_becs_debit', 'bacs_debit', 'bancontact', 'billie', 'bizum', 'blik', 'boleto', 'cashapp', 'crypto', 'customer_balance', 'eps', 'fpx', 'giropay', 'grabpay', 'ideal', 'kakao_pay', 'klarna', 'konbini', 'kr_card', 'mb_way', 'mobilepay', 'multibanco', 'naver_pay', 'nz_bank_account', 'oxxo', 'p24', 'pay_by_bank', 'payco', 'paynow', 'paypal', 'paypay', 'payto', 'pix', 'promptpay', 'revolut_pay', 'samsung_pay', 'satispay', 'scalapay', 'sepa_debit', 'sequra', 'sofort', 'sunbit', 'swish', 'twint', 'upi', 'us_bank_account', 'wechat_pay', 'zip'];
 const SITE='https://refreshed.muhammadiwelfare.org.au';
 const TEST_EMAIL='admin@muhammadiwelfare.org.au';
-const FUNDS=['General Donation','313 Contribution','Niaz Contribution','Youth Fund','Khums Contribution'];
+const FUNDS=['General Donation','313 Contribution','Niaz Contribution','Youth Fund','Khums Contribution','Donation for MWA School'];
 const INTERVALS={weekly:{interval:'week',interval_count:1},fortnightly:{interval:'week',interval_count:2},monthly:{interval:'month',interval_count:1},yearly:{interval:'year',interval_count:1}};
 const today=(now=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
 const fault=(message,status=400)=>Object.assign(new Error(message),{status});
@@ -11,7 +11,10 @@ function cents(value){if(!/^(?:0|[1-9]\d{0,5})(?:\.\d{1,2})?$/.test(String(value
 function validate(input,now=new Date()){
  if(!input||!FUNDS.includes(input.fund))throw fault('Choose a valid fund.');
  if(typeof input.recurringOptIn!=='boolean')throw fault('Choose whether to add recurring donations.');
- const value={email:emailAddress(input.email),fund:input.fund,amount:cents(input.amount),recurring:null};
+ const name=String(input.name||'').trim(),notes=String(input.notes||'').trim(),phone=require('./donation-records').mobile(input.mobile);if(!name||name.length>100)throw fault('Enter your name (up to 100 characters).');if(notes.length>2000)throw fault('Notes must be under 2,000 characters.');if(phone&&!/^\+[1-9]\d{7,14}$/.test(phone))throw fault('Enter an Australian mobile or an international number starting with +.');
+ const value={name,mobile:phone,notes,email:emailAddress(input.email),fund:input.fund,amount:cents(input.amount),recurring:null};
+ if(input.fund==='Niaz Contribution'){const n=input.niaz;if(!n||!['general','event'].includes(n.scope))throw fault('Choose general Niaz or a specific event.');value.niaz={scope:n.scope};if(n.scope==='event'){if(!require('./donation-records').validDate(n.date)||!/^[A-Za-z0-9_-]{1,128}$/.test(n.eventId||''))throw fault('Choose an event date and event.');if(input.recurringOptIn)throw fault('Event-specific Niaz donations are one-off only.');value.niaz={scope:'event',date:n.date,eventId:n.eventId};}}
+ if(input.fund==='Khums Contribution'){const k=input.khums;if(!k||!['Ayatullah Syed Ali Sistani','Ayatullah Syed Ali Khamenei'].includes(k.marja)||!['Sehm-e-Imam','Sehm-e-Sadat','Both Sehm'].includes(k.type))throw fault('Choose your Marja and Khums type.');value.khums={marja:k.marja,type:k.type};}
  if(input.recurringOptIn){const r=input.recurring;if(!r||!INTERVALS[r.frequency])throw fault('Choose a recurring frequency.');
  const date=r.firstDate;if(!/^\d{4}-\d{2}-\d{2}$/.test(date||'')||!Number.isFinite(Date.parse(date+'T00:00:00Z'))||new Date(date+'T00:00:00Z').toISOString().slice(0,10)!==date||date<today(now)||date>today(new Date(now.getTime()+366*86400000)))throw fault('Choose a first date from today through the next year.');
  value.recurring={amount:cents(r.amount),frequency:r.frequency,firstDate:date};}
@@ -53,6 +56,7 @@ function apiHandler({db,stripe}){return async(req,res)=>{
  try{
   const path=req.path.split('/').pop();
   if(await require('./donation-management').handle(req,res,{db,stripe,path}))return;
+  if(req.method==='GET'&&path==='events')return res.json({events:await require('./donation-records').eventList(db,String(req.query.date||''))});
   if(req.method==='GET'&&path==='status'){
    const id=String(req.query.id||'');if(!/^[a-f0-9-]{36}$/.test(id))throw fault('Invalid donation reference.');
    return res.json(await paymentStatus(db,stripe,id));
@@ -62,10 +66,11 @@ function apiHandler({db,stripe}){return async(req,res)=>{
   if(!req.is('application/json'))throw fault('Use JSON.',415);
   const d=validate(req.body),id=req.body.requestId;
   if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id||''))throw fault('Invalid checkout reference.');
+  if(d.niaz?.scope==='event')d.niaz=await require('./donation-records').eventForDonation(db,d.niaz);
   await rateLimit(db,req.ip||'unknown');
   const ref=db.doc('_stripeSandboxDonations/'+id),hash=createHash('sha256').update(JSON.stringify(d)).digest('hex');
   let existing;
-  await db.runTransaction(async tx=>{const s=await tx.get(ref);existing=s.data();if(existing){if(existing.hash!==hash)throw fault('Checkout details changed. Please start again.',409);if(Date.now()-existing.createdAt>23*3600000)throw fault('Checkout expired. Please start again.',409);}else tx.create(ref,{...d,hash,createdAt:Date.now(),status:'awaiting_payment',recurringStatus:d.recurring?'not_started':null,consentVersion:'2026-11-02'});});
+  await db.runTransaction(async tx=>{const s=await tx.get(ref);existing=s.data();if(existing){if(existing.hash!==hash)throw fault('Checkout details changed. Please start again.',409);if(Date.now()-existing.createdAt>23*3600000)throw fault('Checkout expired. Please start again.',409);}else tx.create(ref,{...d,...require('./donation-records').indexFields(d,id),originalEmail:d.email,hash,createdAt:Date.now(),status:'awaiting_payment',recurringStatus:d.recurring?'not_started':null,consentVersion:'2026-11-02'});});
   if(existing?.url)return res.json({url:existing.url});
   const session=await stripe.checkout.sessions.create(checkoutParams(d,id),{idempotencyKey:'mwa-checkout-'+id});
   if(session.livemode||!session.url?.startsWith('https://checkout.stripe.com/'))throw Error('Unexpected checkout mode');

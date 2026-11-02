@@ -23,16 +23,14 @@ async function cancelRecurring(db,stripe,ref,actor){
  try{await db.doc('_stripeSandboxMail/cancel_'+ref.id).create({to:d.email||d.testEmail||TEST_EMAIL,subject:'MWA Sandbox Recurring Donation Cancelled',text:'Your recurring sandbox donation has been cancelled. No new recurring instalments will be scheduled. Payments already completed or in progress are not refunded or reversed.\n\nThis is a sandbox notification; no real money moved.',status:'queued',attempts:0});}catch(e){if(e.code!==6)throw e;}
  return {cancelled:true};
 }
-async function handle(req,res,{db,stripe,path}){
+async function handle(req,res,{db,stripe,path,verifyToken=(token)=>getAuth().verifyIdToken(token,true)}){
  if(!['manage','cancel','admin','admin-cancel'].includes(path))return false;
  if(!['GET','POST'].includes(req.method))throw fault('Method not allowed.',405);
  const admin=path.startsWith('admin');let actor={};
  const bearer=/^Bearer (.+)$/.exec(req.get('Authorization')||'')?.[1];
- if(admin){let token;try{token=await getAuth().verifyIdToken(bearer||'',true);}catch{throw fault('Admin sign-in required.',401);}actor=await resolveAdmin(db,token.uid,token,'donations');if(!actor)throw fault('Donation Administration access required.',403);}
+ if(admin){let token;try{token=await verifyToken(bearer||'');}catch{throw fault('Admin sign-in required.',401);}actor=await resolveAdmin(db,token.uid,token,'donations');if(!actor)throw fault('Donation Administration access required.',403);}
  if(path==='admin'&&req.method==='GET'){
-  const cursor=String(req.query.after||'');if(cursor&&!/^[a-f0-9-]{36}$/.test(cursor))throw fault('Invalid page.');
-  let query=db.collection('_stripeSandboxDonations').orderBy('__name__');if(cursor)query=query.startAfter(cursor);
-  const records=await query.limit(50).get();res.json({items:records.docs.map(doc=>{const d=doc.data();return {id:doc.id,email:d.email||d.testEmail||'',fund:d.fund,amount:d.amount,status:d.status,recurring:d.recurring,recurringStatus:d.recurringStatus,canCancel:!!d.scheduleId&&!['canceled','aborted','completed'].includes(d.recurringStatus)};}),next:records.size===50?records.docs.at(-1).id:null});return true;
+  res.json(await require('./donation-records').listRecords(db,req.query));return true;
  }
  const id=String(req.method==='GET'?req.query.id:req.body?.id||'');if(!/^[a-f0-9-]{36}$/.test(id))throw fault('Invalid donation reference.');
  const ref=db.doc('_stripeSandboxDonations/'+id),d=(await ref.get()).data();if(!d)throw fault('Donation not found.',404);

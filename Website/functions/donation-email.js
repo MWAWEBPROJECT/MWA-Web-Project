@@ -7,6 +7,7 @@ function renderHtml({subject,text,manageUrl}){
 }
 function buildRaw({to,subject,text,messageId,manageUrl}){
  if(manageUrl&&!/^https:\/\/refreshed\.muhammadiwelfare\.org\.au\/#donation-manage=[a-f0-9-]{36}\.[a-f0-9]{64}$/.test(manageUrl))throw Error('Invalid management URL');
+ if(manageUrl&&!text.includes('Donation reference:'))text+='\n\nDonation reference: '+require('./donation-records').reference(manageUrl.split('donation-manage=')[1].split('.')[0]);
  subject='MWA Sandbox '+titleCase(subject);
  to=emailAddress(to);if(/[\r\n]/.test(subject)||!/^[-A-Za-z0-9_@.]+$/.test(messageId))throw Error('Invalid mail headers');
  const related='mwa_related_'+messageId.split('@')[0],alt='mwa_alt_'+messageId.split('@')[0];

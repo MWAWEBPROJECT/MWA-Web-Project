@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {validate,startTimestamp,checkoutParams,today}=require('./donations');
 const {complete}=require('./donations-worker');
 const now=new Date('2026-11-02T01:00:00Z');
-const input={email:'donor@example.com',fund:'General Donation',amount:'100',recurringOptIn:false};
+const input={name:'Test Donor',email:'donor@example.com',fund:'General Donation',amount:'100',recurringOptIn:false};
 test('one-off default does not save card or create schedule',()=>{const d=validate(input,now),p=checkoutParams(d,'id');assert.equal(d.amount,10000);assert.equal(d.recurring,null);assert.equal(p.payment_intent_data.setup_future_usage,undefined);assert.equal(p.line_items[0].price_data.unit_amount,10000)});
 test('explicit different recurring amount and first date',()=>{const d=validate({...input,recurringOptIn:true,recurring:{amount:'20',frequency:'monthly',firstDate:'2026-12-01'}},now);assert.equal(d.recurring.amount,2000);assert.equal(checkoutParams(d,'id').payment_intent_data.setup_future_usage,'off_session')});
 test('invalid amounts rejected without rounding away fractions',()=>{for(const amount of ['0','-1','1.001','NaN','1e3','100001'])assert.throws(()=>validate({...input,amount},now))});

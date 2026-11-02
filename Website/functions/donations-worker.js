@@ -8,7 +8,7 @@ async function complete(db,stripe,ref){
  if(s.livemode||s.metadata?.mwaDonation!==ref.id||s.metadata?.integration!=='mwa-sandbox-v1'||s.amount_total!==d.amount||s.currency!=='aud')throw Error('Session mismatch');
  if(s.payment_status!=='paid'){if(s.status==='expired')await ref.update({status:'expired'});return;}
  const donorEmail=emailAddress(s.customer_details?.email||d.email||d.testEmail||TEST_EMAIL);
- await ref.update({customerId:idOf(s.customer),email:donorEmail});d.email=donorEmail;
+ await ref.update({customerId:idOf(s.customer),email:donorEmail,...require('./donation-records').indexFields({...d,email:donorEmail,customerId:idOf(s.customer)},ref.id)});d.email=donorEmail;
  let note='No recurring donation was selected.';
  if(d.recurring){
   try{
@@ -30,7 +30,7 @@ async function complete(db,stripe,ref){
    note='Your one-off payment succeeded, but recurring setup needs attention. Do not pay the one-off amount again. Contact the MWA administrator to resolve the schedule.';
   }
  }
- await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.\n\n${note}`,{to:d.email,...(d.recurring?{manageUrl:await require('./donation-management').managementLink(ref)}:{})});
+ await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nDonation reference: ${require('./donation-records').reference(ref.id)}\nName: ${d.name||'Not recorded'}\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.${d.niaz?.scope==='event'?'\nNiaz event: '+d.niaz.title+' on '+d.niaz.date:''}${d.khums?'\nMarja: '+d.khums.marja+'\nKhums: '+d.khums.type:''}\n\n${note}`,{to:d.email,...(d.recurring?{manageUrl:await require('./donation-management').managementLink(ref)}:{})});
  await ref.update({status:'paid'});
 }
 async function recurringUpdate(db,stripe,ref){
