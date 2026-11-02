@@ -49,3 +49,5 @@ transaction.set(db.collection('auditLog').doc(),{module:'website-cms',entityType
 exports.enquiriesMailWorker=require('firebase-functions/v2/scheduler').onSchedule({schedule:'every 2 minutes',region:'australia-southeast1',timeoutSeconds:240,maxInstances:1},()=>require('./enquiries-gmail').run(db));
 
 exports.stripeSandboxWebhook=require('./stripe-sandbox').stripeSandboxWebhook;
+
+Object.assign(exports,require('./donations-runtime'));

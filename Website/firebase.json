@@ -24,6 +24,13 @@
           }
         },
         {
+          "source": "/api/donations/**",
+          "function": {
+            "functionId": "donationSandboxApi",
+            "region": "australia-southeast1"
+          }
+        },
+        {
           "source": "/api/**",
           "function": {
             "functionId": "websiteCmsApi",
