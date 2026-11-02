@@ -19,3 +19,14 @@
 **/*.key
 **/migration-record.json
 /Centralised Calendar/Prototype and Brief/
+
+# Shared assistant handover and instructions (other project documents remain local).
+!/AGENTS.md
+!/.github/
+/.github/*
+!/.github/copilot-instructions.md
+!/Project Documentation/
+/Project Documentation/*
+!/Project Documentation/2. Tech Docs/
+/Project Documentation/2. Tech Docs/*
+!/Project Documentation/2. Tech Docs/MWA Web Project - Codex and Copilot Handover.md
