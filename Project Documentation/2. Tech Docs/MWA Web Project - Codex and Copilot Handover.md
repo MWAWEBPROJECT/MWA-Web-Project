@@ -4,8 +4,8 @@
 # MWA Web Project — Codex / Copilot handover
 
 Last updated: **2 November 2026, Australia/Sydney** by Codex.
-Latest application commit verified locally: **4e75f9b** (already pushed to origin/main).
-Current task completed: sandbox Stripe Checkout connected and deployed, including optional recurring schedules and test email processing. Browser one-off and recurring setup tests passed; all live payments remain disabled. Do not recursively change this document just to insert its own commit hash.
+Latest application commit verified locally: **230211c** (already pushed to origin/main).
+Current task completed: clear donation return dialog, donor email capture/routing and branded HTML donation emails deployed. 29 targeted tests and website build passed; public success dialog and required email field verified in browser. Do not recursively change this document just to insert its own commit hash.
 
 ## Start here
 
@@ -181,4 +181,17 @@ For future entries include blockers and unsaved/uncommitted work explicitly. Kee
 
 | 2026-11-02 | Codex | Connected hosted Sandbox Checkout, validation/idempotency, verified payment worker, separate recurring schedule, admin-only test mail outbox and reminders. 26 unit tests; production build; two browser payment/setup round trips and Gmail accepted sends verified | API, worker and website deployed successfully; changes committed/pushed with handover | User may test with Stripe test cards. Before live release complete reminder/time-clock and invoice-failure testing, real donor email support, operations/admin reconciliation and finance approval |
 
-Operational limits: sandbox mail recipient is deliberately fixed, cancellation is via Stripe/admin (no donor portal), failed recurring setup needs manual reconciliation, reminder/email delivery is not guaranteed during outages, and no time-clock end-to-end test has been completed. Do not claim production-ready fundraising. Long-lived sandbox rate-limit documents currently have expiry metadata but no automatic TTL policy provisioned; provision cleanup before scale/live release. Historical sections above describe earlier preview/bootstrap milestones; this checkpoint supersedes them.
+Operational limits (updated by donor-email change below): sandbox mail now uses the donor email, cancellation is via Stripe/admin (no donor portal), failed recurring setup needs manual reconciliation, reminder/email delivery is not guaranteed during outages, and no time-clock end-to-end test has been completed. Do not claim production-ready fundraising. Long-lived sandbox rate-limit documents currently have expiry metadata but no automatic TTL policy provisioned; provision cleanup before scale/live release. Historical sections above describe earlier preview/bootstrap milestones; this checkpoint supersedes them.
+
+
+### Donation return, donor email and email template — 2 November 2026
+
+User reported no obvious payment confirmation and no donor email recording; requested donation emails match existing template emails. Replaced tiny-only result with a dedicated accessible themed dialog: appears immediately on return, confirms only after server status=paid, polls pending results, offers Check again on delay/error, and distinguishes recurring setup/cancellation states. Closing the dialog leaves inline status and does not reopen it on updates.
+
+Added required donor email field before Checkout. Server validates it, stores it in private donation record and passes it as customer_email. After paid verification, Stripe customer_details.email is retained as the final donor address. All confirmation/reminder/invoice mail jobs now store that recipient; legacy jobs with no recipient retain their original admin fallback. Removed new-record testEmail assignment. This supersedes previous fixed-admin sandbox recipient restriction at the user's request. No guessed email/backfill for old donations; previous test payments used the admin address, so their actual donor email cannot be recovered from that flow.
+
+New donation-email.js renders a multipart HTML/plain-text email with inline CID MWA logo, Segoe UI font, green organisation header, white content card, website button and address/contact footer, matching existing booking notification design. Subject/body escaped; validated recipient and headers; fixed official reply-to. Sender remains admin Google Workspace mailbox. Confirmation/reminder/failure/receipt jobs all use the template at delivery time. Already-sent messages are not resent.
+
+29 targeted tests passed, including email validation/header-injection rejection, Stripe customer email propagation, persisted verified recipient and multipart/logo/HTML escaping. No real payment made or donor email sent during automated tests. Website build passed (embedded calendar assets preserved); donationSandboxApi, donationSandboxWorker and website Hosting deployed successfully. Browser verified immediate pending dialog transitions to Thank you — payment confirmed using an existing assistant-owned paid test record; required email input confirmed. New multipart MIME/logo/recipient handling tested locally; no new payment, external donor email or resend performed in this change. Files: functions/donations.js, donations-worker.js, donation-email.js, donations.test.js; website/donations.js, index.html, website-polish.css.
+
+| 2026-11-02 | Codex | Prominent return dialog, required saved donor email and MWA branded HTML/plain-text/CID-logo donation emails; 29 tests/build passed; deployed UI verified with prior test record | API, worker and Hosting deployed; committed/pushed with handover | User can refresh and make a new sandbox test with their email; older payments cannot recover an email never collected |

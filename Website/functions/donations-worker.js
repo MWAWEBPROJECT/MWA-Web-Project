@@ -1,5 +1,5 @@
 const {randomUUID}=require('node:crypto');
-const {TEST_EMAIL,INTERVALS,today,startTimestamp,money}=require('./donations');
+const {emailAddress,TEST_EMAIL,INTERVALS,today,startTimestamp,money}=require('./donations');
 const idOf=v=>typeof v==='string'?v:v?.id;
 async function queueMail(db,key,subject,text,extra={}){try{await db.doc('_stripeSandboxMail/'+key).create({subject,text,status:'queued',attempts:0,...extra});}catch(e){if(e.code!==6)throw e;}}
 async function complete(db,stripe,ref){
@@ -7,7 +7,8 @@ async function complete(db,stripe,ref){
  const s=await stripe.checkout.sessions.retrieve(d.sessionId,{expand:['payment_intent']});
  if(s.livemode||s.metadata?.mwaDonation!==ref.id||s.metadata?.integration!=='mwa-sandbox-v1'||s.amount_total!==d.amount||s.currency!=='aud')throw Error('Session mismatch');
  if(s.payment_status!=='paid'){if(s.status==='expired')await ref.update({status:'expired'});return;}
- await ref.update({customerId:idOf(s.customer)});
+ const donorEmail=emailAddress(s.customer_details?.email||d.email||d.testEmail||TEST_EMAIL);
+ await ref.update({customerId:idOf(s.customer),email:donorEmail});d.email=donorEmail;
  let note='No recurring donation was selected.';
  if(d.recurring){
   try{
@@ -29,7 +30,7 @@ async function complete(db,stripe,ref){
    note='Your one-off payment succeeded, but recurring setup needs attention. Do not pay the one-off amount again. Contact the MWA administrator to resolve the schedule.';
   }
  }
- await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.\n\n${note}`);
+ await queueMail(db,'confirmation_'+ref.id,'MWA sandbox donation confirmation',`TEST ONLY — no real money moved.\n\nOne-off donation successful: ${money(d.amount)} for ${d.fund}.\n\n${note}`,{to:d.email});
  await ref.update({status:'paid'});
 }
 async function recurringUpdate(db,stripe,ref){
@@ -47,7 +48,7 @@ async function recurringUpdate(db,stripe,ref){
  if(!next||!Number.isFinite(amount))return;
  const due=today(new Date(next*1000)),twoDays=today(new Date(Date.now()+2*86400000));
  await ref.ref.update({recurringStatus:schedule.status==='not_started'?'scheduled':'active',subscriptionId:subscriptionId||null,nextPaymentDate:due});
- if(due===twoDays)await queueMail(db,'reminder_'+ref.id+'_'+next+'_'+amount,'MWA sandbox recurring donation reminder',`TEST ONLY — no real money will move.\n\nYour next recurring donation of ${money(amount)} for ${d.fund} is scheduled for ${due} (Sydney), in two days. Contact ${TEST_EMAIL} to cancel.`,{reminder:{donationId:ref.id,due,amount,next}});
+ if(due===twoDays)await queueMail(db,'reminder_'+ref.id+'_'+next+'_'+amount,'MWA sandbox recurring donation reminder',`TEST ONLY — no real money will move.\n\nYour next recurring donation of ${money(amount)} for ${d.fund} is scheduled for ${due} (Sydney), in two days. Contact ${TEST_EMAIL} to cancel.`,{to:d.email||d.testEmail||TEST_EMAIL,reminder:{donationId:ref.id,due,amount,next}});
 }
 async function events(db,stripe){
  const batch=await db.collection('_stripeSandboxEvents').where('status','==','pending').limit(20).get();
@@ -59,8 +60,8 @@ async function events(db,stripe){
    const sub=idOf(invoice.parent?.subscription_details?.subscription)||idOf(invoice.subscription);
    if(sub){const found=await db.collection('_stripeSandboxDonations').where('customerId','==',idOf(invoice.customer)).limit(10).get();
     for(const d of found.docs){if(!d.data().scheduleId)continue;const sch=await stripe.subscriptionSchedules.retrieve(d.data().scheduleId);if(sub!==(idOf(sch.subscription)||idOf(sch.released_subscription)))continue;
-     if(invoice.status==='paid')await queueMail(db,'invoice_paid_'+invoice.id,'MWA sandbox recurring donation receipt',`TEST ONLY — no real money moved.\n\nRecurring donation successful: ${money(invoice.amount_paid)} for ${d.data().fund}.`);
-     else if(['invoice.payment_failed','invoice.payment_action_required'].includes(e.type))await queueMail(db,'invoice_failed_'+invoice.id,'MWA sandbox recurring payment needs attention','TEST ONLY. Your recurring test payment did not complete. Contact the MWA administrator to review the payment.');
+     if(invoice.status==='paid')await queueMail(db,'invoice_paid_'+invoice.id,'MWA sandbox recurring donation receipt',`TEST ONLY — no real money moved.\n\nRecurring donation successful: ${money(invoice.amount_paid)} for ${d.data().fund}.`,{to:d.data().email||d.data().testEmail||TEST_EMAIL});
+     else if(['invoice.payment_failed','invoice.payment_action_required'].includes(e.type))await queueMail(db,'invoice_failed_'+invoice.id,'MWA sandbox recurring payment needs attention','TEST ONLY. Your recurring test payment did not complete. Contact the MWA administrator to review the payment.',{to:d.data().email||d.data().testEmail||TEST_EMAIL});
     }
    }
   }
@@ -86,7 +87,7 @@ async function mail(db,stripe){
   const messageId=doc.id+'@sandbox.muhammadiwelfare.org.au';
   const previous=await gmail('messages?'+new URLSearchParams({q:'in:sent rfc822msgid:'+messageId,maxResults:'1'}));
   if(!previous.messages?.length){
-   const raw=Buffer.from(`From: MWA Sandbox <${TEST_EMAIL}>\r\nTo: ${TEST_EMAIL}\r\nSubject: ${j.subject}\r\nMessage-ID: <${messageId}>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(j.text).toString('base64')}`).toString('base64url');
+   const raw=require('./donation-email').buildRaw({to:emailAddress(j.to||TEST_EMAIL),subject:j.subject,text:j.text,messageId});
    await gmail('messages/send',{method:'POST',body:JSON.stringify({raw})});
   }
   await doc.ref.update({status:'sent',sentAt:new Date().toISOString()});
