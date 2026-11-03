@@ -22,14 +22,17 @@ export function templateValidations(deptCount, venueCount) {
   ];
 }
 
-export async function buildTemplateWorkbook({ departments = [], venues = [] }) {
+export async function buildTemplateWorkbook({ departments = [], venues = [], dataRows = templateRows().slice(1) }) {
+  if (!Array.isArray(dataRows) || dataRows.length > TEMPLATE_LAST_ROW - 1) {
+    throw new Error('The import template supports up to 500 event rows. No partial workbook was created.');
+  }
   const ExcelJS = (await import('exceljs')).default;
   const names = (list) => list.filter(x => x.active !== false).map(x => String(x.name || '').trim()).filter(Boolean).sort((a, b) => a.localeCompare(b));
   const dNames = names(departments); const vNames = names(venues);
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Bookings', { views: [{ state: 'frozen', ySplit: 1 }] });
-  const rows = templateRows();
+  const rows = [EXPORT_HEADERS.slice(0, TEMPLATE_COLUMN_COUNT), ...dataRows];
   rows.forEach(r => ws.addRow(r));
   ws.getRow(1).font = { bold: true };
   const widths = [8, 30, 18, 18, 12, 12, 11, 8, 12, 11, 11, 8, 12, 11, 14, 14, 12, 12, 20, 30, 18, 22, 16, 30];

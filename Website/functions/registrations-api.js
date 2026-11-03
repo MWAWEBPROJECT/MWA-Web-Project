@@ -18,8 +18,36 @@ async function adminFor(req,db,getAuth){
  if(!actor)throw fault(403,'Form Builder access is required to manage registration forms and responses.');
  return actor;
 }
-function audit(db,tx,actor,id,action){
- tx.create(db.collection('auditLog').doc(),{module:'form-builder',entityType:'registration-form',entityId:id,action,userId:actor.uid,userEmail:actor.email,timestamp:new Date().toISOString()});
+function audit(db,tx,actor,id,action,details={}){
+ tx.create(db.collection('auditLog').doc(),{module:'form-builder',entityType:'registration-form',entityId:id,action,userId:actor.uid,userEmail:actor.email,timestamp:new Date().toISOString(),...details});
+}
+function exportCutoff(value){
+ if(typeof value!=='string'||!Number.isFinite(Date.parse(value))||new Date(value).toISOString()!==value||Date.parse(value)>Date.now()+60000)throw fault(400,'Invalid export start time.');
+ return value;
+}
+function responseData(id,data){
+ const {digest,originalAnswers,...response}=data;
+ return {id,...response};
+}
+async function editResponse(db,formId,responseId,input,actor){
+ if(!input||!Number.isSafeInteger(input.editRevision)||input.editRevision<0)throw fault(400,'A valid response edit revision is required.');
+ if(!input.answers||typeof input.answers!=='object'||Array.isArray(input.answers)||Buffer.byteLength(JSON.stringify(input.answers))>80000)throw fault(400,'Check the size and format of your answers.');
+ const ref=db.doc('registrationForms/'+formId+'/responses/'+responseId);
+ return db.runTransaction(async tx=>{
+  const snap=await tx.get(ref);
+  if(!snap.exists)throw fault(404,'Response not found.');
+  const current=snap.data();
+  if((current.editRevision||0)!==input.editRevision)throw fault(409,'This response changed. Reload responses before editing it again.');
+  for(const field of current.fields)if(field.type==='consent'&&JSON.stringify(current.answers[field.id])!==JSON.stringify(input.answers[field.id]))throw fault(400,'Submitted consent cannot be changed by an admin.');
+  const errors=(await model).validateAnswers(current.fields,input.answers);
+  if(Object.keys(errors).length)throw fault(400,Object.values(errors)[0]);
+  const changedFields=current.fields.filter(field=>JSON.stringify(current.answers[field.id])!==JSON.stringify(input.answers[field.id])).map(field=>field.id);
+  if(!changedFields.length)return {response:responseData(responseId,current)};
+  const update={answers:input.answers,originalAnswers:current.originalAnswers||current.answers,editRevision:input.editRevision+1,editedAt:new Date().toISOString(),editedBy:actor.uid};
+  tx.update(ref,update);
+  audit(db,tx,actor,formId,'registration.response_updated',{responseId,changedFields,editRevision:update.editRevision});
+  return {response:responseData(responseId,{...current,...update})};
+ });
 }
 async function save(db,id,input,actor){
  if(!input||!Number.isSafeInteger(input.revision)||input.revision<0)throw fault(400,'A valid form revision is required.');
@@ -109,15 +137,32 @@ async function handle(req,res,{db,getAuth,origins}){
    return res.json({items:docs.map(doc=>({id:doc.id,...doc.data()})),next});
   }
   if(path==='/admin'&&req.method==='POST')return res.status(201).json(await save(db,randomUUID(),req.body,actor));
-  const match=/^\/admin\/([a-f0-9-]{36})(\/responses)?$/.exec(path);
+  const editMatch=/^\/admin\/([a-f0-9-]{36})\/responses\/([A-Za-z0-9_-]{1,128})$/.exec(path);
+  if(editMatch){
+   if(req.method!=='PUT')throw fault(405,'Method not allowed.');
+   return res.json(await editResponse(db,editMatch[1],editMatch[2],req.body,actor));
+  }
+  const match=/^\/admin\/([a-f0-9-]{36})(\/responses|\/export)?$/.exec(path);
   if(!match)throw fault(404,'Registration endpoint not found.');
   const [,id,action]=match;
   if(!action&&req.method==='PUT')return res.json(await save(db,id,req.body,actor));
-  if(action&&req.method==='GET'){
+  if(action==='/responses'&&req.method==='GET'){
    if(!(await db.doc('registrationForms/'+id).get()).exists)throw fault(404,'Form not found.');
    const collection=db.collection('registrationForms/'+id+'/responses');
-   const {docs,next}=await page(collection,collection.orderBy('createdAt','desc'),req.query.after);
-   return res.json({items:docs.map(doc=>{const {digest,...response}=doc.data();return {id:doc.id,...response};}),next});
+   let query=collection.orderBy('createdAt','desc');
+   if(req.query.asOf!==undefined)query=query.where('createdAt','<=',exportCutoff(req.query.asOf));
+   const {docs,next}=await page(collection,query,req.query.after);
+   return res.json({items:docs.map(doc=>responseData(doc.id,doc.data())),next});
+  }
+  if(action==='/export'&&req.method==='POST'){
+   const asOf=exportCutoff(req.body?.asOf),count=req.body?.count,filtered=req.body?.filtered??false;
+   if(!Number.isSafeInteger(count)||count<0||count>20000)throw fault(400,'Invalid response export count.');
+   if(typeof filtered!=='boolean')throw fault(400,'Invalid response export filter setting.');
+   await db.runTransaction(async tx=>{
+    if(!(await tx.get(db.doc('registrationForms/'+id))).exists)throw fault(404,'Form not found.');
+    audit(db,tx,actor,id,'registration.export_prepared',{format:'xlsx',reportedCount:count,asOf,filtered});
+   });
+   return res.json({ok:true});
   }
   throw fault(405,'Method not allowed.');
  }catch(error){

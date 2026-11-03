@@ -33,7 +33,7 @@ export function RegistrationList({panel=false}){
  </div>;
 }
 export default function Registrations(){
- const id=new URLSearchParams(location.search).get('form');
+ const params=new URLSearchParams(location.search),id=params.get('form'),shared=!!id&&params.get('shared')==='1';
  const [form,setForm]=useState(null),[answers,setAnswers]=useState({}),[errors,setErrors]=useState({}),[error,setError]=useState(''),[loading,setLoading]=useState(!!id),[busy,setBusy]=useState(false),[reference,setReference]=useState(''),[time,setTime]=useState(Date.now());
  const requestId=useRef(crypto.randomUUID()),honeypot=useRef(null);
  useEffect(()=>{
@@ -55,13 +55,14 @@ export default function Registrations(){
   catch(problem){setError(problem.message);}
   finally{setBusy(false);}
  }
- return <section className="registrations-page wrap"><div className="eyebrow">MWA COMMUNITY</div><h1>{form?.title||'Registrations'}</h1>
- <p><a className="text-link" href={id?'/registrations/':'/#today-panels'}>{id?'All registrations':'Back to Home'}</a></p>
+ const ConfirmationHeading=shared?'h1':'h2';
+ return <section className="registrations-page wrap">{(!shared||!reference)&&<><div className="eyebrow">{shared?'MUHAMMADI WELFARE ASSOCIATION':'MWA COMMUNITY'}</div><h1>{form?.title||'Registrations'}</h1></>}
+ {!shared&&<p><a className="text-link" href={id?'/registrations/':'/#today-panels'}>{id?'All registrations':'Back to Home'}</a></p>}
  {!id?<RegistrationList/>:<>
  {loading&&<p role="status">Loading form...</p>}{error&&<p role="alert">{error}</p>}
- {reference?<div role="status" className="registration-card"><h2>Thank you.</h2><p>Your response has been saved. Your reference is <strong>{reference}</strong>.</p><p>This confirms receipt of your form, not a calendar booking or event approval.</p></div>
+ {reference?<div role="status" className="registration-card"><ConfirmationHeading>Thank you.</ConfirmationHeading><p>We have received your response. Your reference number is <strong>{reference}</strong>.</p></div>
  :form&&<><p className="registration-introduction">{form.description}</p><p>Closes at the end of {expiryLabel(form.expiryDate)} (Sydney time).</p>
- {form.event&&<p>Linked event: <a className="text-link" href={'/calendar/?date='+new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(form.event.startAt))}>{form.event.title}</a></p>}
+ {form.event&&<p>Linked event: {shared?form.event.title:<a className="text-link" href={'/calendar/?date='+new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(form.event.startAt))}>{form.event.title}</a>}</p>}
  <p className="registration-purpose">{form.purpose}</p><p>Responses are private to authorised MWA Form Builder administrators. No sign-in is required.</p>
  {!isFormOpen(form,time)?<p role="status">This form has expired and no longer accepts responses.</p>
  :<form onSubmit={submit} noValidate><fieldset disabled={busy}><legend className="registration-sr-only">Your answers</legend><p>Fields marked * are required.</p><RegistrationFields fields={form.fields} answers={answers} errors={errors} onChange={(key,value)=>setAnswers(current=>({...current,[key]:value}))}/>

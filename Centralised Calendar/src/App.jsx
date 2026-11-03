@@ -86,7 +86,7 @@ export default function App() {
         <main><BookingEmailAction/>
           {tab === 'calendar-management' && <CalendarManagement hijriOverrides={hijriOverrides} onReloadSettings={()=>getHijriSettings().then(s=>setHijriOverrides(s.overrides||[]))}/>}
           {tab === 'tools' && <ToolsAutomation/>}
-          {tab === 'islamic-events' && <IslamicEventsPage hijriOverrides={hijriOverrides} />}
+          {tab === 'islamic-events' && <IslamicEventsPage hijriOverrides={hijriOverrides} departments={departments} venues={venues} />}
           {tab === 'calendar' && (
             <CalendarPage events={events} venues={venues} departments={departments}
               isAdmin={isAdmin} hijriOverrides={hijriOverrides} onSaved={reloadPublic} />

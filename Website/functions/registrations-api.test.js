@@ -95,7 +95,59 @@ test('Form Builder API persistence, permission isolation, expiry, idempotency an
     const first=await route(path,'GET',null,admin);assert.equal(first.status,200);assert.equal(first.value.items.length,50);assert.ok(first.value.next);
     const second=await route(path+'?after='+first.value.next,'GET',null,admin);assert.equal(second.status,200);assert.ok(second.value.items.length>=5);assert.equal(second.value.next,null);
     assert.equal(new Set([...first.value.items,...second.value.items].map(row=>row.id)).size,first.value.items.length+second.value.items.length);
+    if(path.endsWith('/responses')){
+     const rows=[...first.value.items,...second.value.items];
+     assert.deepEqual(rows.map(row=>row.createdAt),rows.map(row=>row.createdAt).sort().reverse());
+    }
    }
+  });
+  await t.test('Excel export cutoff excludes later submissions and preparation rechecks module access',async()=>{
+   const asOf='2026-11-03T00:00:00.000Z',path='/admin/'+id;
+   await db.doc('registrationForms/'+id+'/responses/later').set({createdAt:'2026-11-03T00:00:00.001Z',fields:input.fields,answers:{name:'Later'}});
+   const first=await route(path+'/responses?asOf='+asOf,'GET',null,true);
+   assert.equal(first.status,200);assert.equal(first.value.items.length,50);
+   const second=await route(path+'/responses?asOf='+asOf+'&after='+first.value.next,'GET',null,true);
+   assert.equal(second.value.items.length,5);assert.equal(second.value.items.some(row=>row.id==='later'),false);
+   for(const cutoff of ['bad','2026-02-30T00:00:00.000Z','9999-12-31T00:00:00.000Z']){
+    assert.equal((await route(path+'/responses?asOf='+cutoff,'GET',null,true)).status,400);
+   }
+   assert.equal((await route(path+'/export','POST',{asOf,count:55})).status,401);
+   await team.set({modules:['website-cms']});
+   assert.equal((await route(path+'/export','POST',{asOf,count:55},true)).status,403);
+   await team.set({modules:['form-builder']});
+   assert.equal((await route(path+'/export','POST',{asOf,count:20001},true)).status,400);
+   assert.equal((await route(path+'/export','POST',{asOf,count:55,filtered:true},true)).status,200);
+   const audit=await db.collection('auditLog').where('action','==','registration.export_prepared').get();
+   assert.equal(audit.size,1);assert.equal(audit.docs[0].data().userId,actor.uid);assert.equal(audit.docs[0].data().reportedCount,55);assert.equal(audit.docs[0].data().filtered,true);
+  });
+  await t.test('admins correct saved answers without changing consent, reference, submission order or original snapshots',async()=>{
+   const formId=randomUUID(),consent={id:'consent',label:'Agreement',type:'consent',terms:'Original terms',required:true};
+   const saved=await A.save(db,formId,{...input,published:true,fields:[...input.fields,consent]},actor);
+   const submission={revision:1,requestId:randomUUID(),answers:{name:'Original visitor',consent:true}};
+   const receipt=await A.submit(db,formId,submission,'edit-test');
+   const collection=db.collection('registrationForms/'+formId+'/responses'),original=(await collection.get()).docs[0],path='/admin/'+formId+'/responses/'+original.id;
+   const correction={editRevision:0,answers:{name:'Corrected visitor',consent:true}};
+   assert.equal((await route(path,'PUT',correction)).status,401);
+   await team.set({modules:['website-cms']});assert.equal((await route(path,'PUT',correction,true)).status,403);
+   await team.set({modules:['form-builder'],accessExpiresAt:new Date(0)});assert.equal((await route(path,'PUT',correction,true)).status,403);
+   await team.set({modules:['form-builder']});
+   assert.equal((await route(path,'PUT',correction,true,'https://other.invalid')).status,403);
+   for(const answers of [{name:'Corrected visitor',consent:false},{name:'Corrected visitor'},{name:'',consent:true},{name:'Corrected visitor',consent:true,unknown:'new'}]){
+    assert.equal((await route(path,'PUT',{editRevision:0,answers},true)).status,400);
+   }
+   await A.save(db,formId,{...saved.form,published:false,fields:[{...input.fields[0],type:'number'}, {...consent,terms:'New terms'}]},actor);
+   const result=await route(path,'PUT',{...correction,createdAt:'1900-01-01',reference:'FORGED',fields:[]},true);
+   assert.equal(result.status,200);assert.equal(result.value.response.editRevision,1);assert.equal(result.value.response.originalAnswers,undefined);assert.equal(result.value.response.digest,undefined);
+   assert.equal((await route(path,'PUT',correction,true)).status,409);
+   assert.equal((await route(path,'PUT',{editRevision:1,answers:{name:'Second correction',consent:true}},true)).status,200);
+   const current=(await original.ref.get()).data();
+   assert.deepEqual(current.originalAnswers,submission.answers);assert.equal(current.answers.name,'Second correction');
+   assert.equal(current.createdAt,original.data().createdAt);assert.equal(current.reference,receipt.reference);
+   assert.deepEqual(current.fields,original.data().fields);assert.equal(current.digest,original.data().digest);assert.equal(current.editedBy,actor.uid);
+   assert.equal((await A.submit(db,formId,submission,'edit-test')).reference,receipt.reference);
+   const audit=await db.collection('auditLog').where('action','==','registration.response_updated').get();
+   assert.equal(audit.size,2);
+   for(const doc of audit.docs){assert.deepEqual(doc.data().changedFields,['name']);assert.equal(doc.data().answers,undefined);}
   });
  }finally{await deleteApp(app);}
 });

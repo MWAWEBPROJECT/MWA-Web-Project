@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const output=await build({stdin:{contents:`export {default as FormBuilder} from './website/FormBuilder.jsx';export {default as AdminConsole} from './website/AdminConsole.jsx';export {default as RegistrationFields} from './website/RegistrationFields.jsx';`,resolveDir:root,loader:'jsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',packages:'external',plugins:[{name:'form-fixtures',setup(builder){
+const output=await build({stdin:{contents:`export {default as FormBuilder} from './website/FormBuilder.jsx';export {default as AdminConsole} from './website/AdminConsole.jsx';export {default as RegistrationFields} from './website/RegistrationFields.jsx';export {default as RegistrationShare} from './website/RegistrationShare.jsx';export {default as Registrations} from './website/Registrations.jsx';`,resolveDir:root,loader:'jsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',packages:'external',plugins:[{name:'form-fixtures',setup(builder){
  builder.onResolve({filter:/^@calendar\/contexts\/AuthContext\.jsx$/},()=>({path:'auth',namespace:'fixture'}));
  builder.onResolve({filter:/^@calendar\/firebase\/firebase\.js$/},()=>({path:'firebase',namespace:'fixture'}));
  builder.onResolve({filter:/^@mwa\/access$/},()=>({path:path.resolve(root,'shared/module-access.js')}));
@@ -16,7 +16,7 @@ const output=await build({stdin:{contents:`export {default as FormBuilder} from 
 }}]});
 const module={exports:{}};
 new Function('require','module','exports',output.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
-const {FormBuilder,AdminConsole,RegistrationFields}=module.exports;
+const {FormBuilder,AdminConsole,RegistrationFields,RegistrationShare,Registrations}=module.exports;
 test('Form Builder is an independent module with a dedicated link and access guard',()=>{
  for(const modules of [[],['website-cms'],['form-builder']]){
   globalThis.__formSession={isAdmin:true,canAccess:id=>modules.includes(id),user:{uid:'fixture'}};
@@ -35,4 +35,23 @@ test('Community Connect choice and consent render safely with accessible labels'
  ];
  const html=renderToStaticMarkup(React.createElement(RegistrationFields,{fields,answers:{choice:'One',consent:true},onChange:()=>{}}));
  assert.match(html,/Choose &lt;script&gt;/);assert.match(html,/No &lt;script&gt; execution/);assert.match(html,/<legend>/);assert.match(html,/aria-required="true"/);assert.match(html,/checked=""/);
+});
+test('saved open forms provide sharing controls, but drafts and expired forms do not',()=>{
+ globalThis.location={origin:'https://refreshed.muhammadiwelfare.org.au'};
+ try{
+  const form={id:'a4b0d27e-f2fd-4f2c-941f-36638a7d61ed',title:'Community form',published:true,expiresAt:'9999-12-31T00:00:00.000Z'};
+  const html=renderToStaticMarkup(React.createElement(RegistrationShare,{form}));
+  assert.match(html,/Copy link/);assert.match(html,/WhatsApp/);assert.match(html,/Text message/);assert.match(html,/shared=1/);
+  for(const closed of [{...form,published:false},{...form,expiresAt:'2020-01-01T00:00:00.000Z'}]){
+   assert.doesNotMatch(renderToStaticMarkup(React.createElement(RegistrationShare,{form:closed})),/Copy link|href=/);
+  }
+ }finally{delete globalThis.location;}
+});
+test('shared form route omits website registration navigation without changing the normal route',()=>{
+ try{
+  globalThis.location={search:'?form=a4b0d27e-f2fd-4f2c-941f-36638a7d61ed&shared=1'};
+  assert.doesNotMatch(renderToStaticMarkup(React.createElement(Registrations)),/All registrations|Back to Home/);
+  globalThis.location.search='?form=a4b0d27e-f2fd-4f2c-941f-36638a7d61ed';
+  assert.match(renderToStaticMarkup(React.createElement(Registrations)),/All registrations/);
+ }finally{delete globalThis.location;}
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MoonStar, Pencil, Plus, Save, X } from 'lucide-react';
+import { Download, MoonStar, Pencil, Plus, Save, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { addHijriMonths, getTodayHijriParts, HIJRI_MONTHS } from '../services/hijriService.js';
 import { createIslamicEvent, saveIslamicEvent, watchIslamicEvents } from '../services/islamicEventsService.js';
@@ -8,7 +8,7 @@ import {
   ISLAMIC_EVENT_CATEGORIES, observanceTone
 } from '../utils/islamicEvents.js';
 
-export default function IslamicEventsPage({ hijriOverrides }) {
+export default function IslamicEventsPage({ hijriOverrides = [], departments = [], venues = [] }) {
   const {user,canAccess}=useAuth();
   const isAdmin=canAccess('calendar-management');
   const [today, setToday] = useState(() => new Date());
@@ -28,6 +28,8 @@ export default function IslamicEventsPage({ hijriOverrides }) {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [notice, setNotice] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   useEffect(() => {
     const timer = setInterval(() => setToday(new Date()), 60000);
@@ -87,6 +89,15 @@ export default function IslamicEventsPage({ hijriOverrides }) {
     } catch (error) { setSaveError(error.message); }
     finally { setBusy(false); }
   }
+  async function downloadExcel() {
+    setExportBusy(true); setExportError(''); setNotice('');
+    try {
+      const { downloadIslamicEventsXlsx } = await import('../services/islamicEventsExport.js');
+      await downloadIslamicEventsXlsx({ events, year, hijriOverrides, departments, venues });
+      setNotice(`Excel download prepared for the full ${year} AH. Complete the blank booking details before importing.`);
+    } catch (error) { setExportError(`Could not export Islamic events: ${error.message}`); }
+    finally { setExportBusy(false); }
+  }
 
   return (
     <section className="islamic-events-page" aria-labelledby="islamic-events-title">
@@ -122,6 +133,10 @@ export default function IslamicEventsPage({ hijriOverrides }) {
           </label>
         </div>
         <p className="muted" role="status">{selectedMonth === null ? 'Full year' : HIJRI_MONTHS[selectedMonth - 1]?.name} {year} AH{!loading && !loadError && !result.error ? ` - ${result.rows.length} event(s)` : ''}</p>
+        <button type="button" className="lb lb-outline" disabled={loading || !!loadError || !!result.error || !events.some(event => event.enabled !== false) || !!editing || exportBusy}
+          aria-busy={exportBusy} onClick={downloadExcel}><Download />{exportBusy ? 'Preparing Excel...' : 'Download Excel (.xlsx)'}</button>
+        <p className="muted">Downloads the full selected Hijri year in the calendar Import Events template, regardless of the month filter. Complete booking type, venue and times before importing. Downloading creates no bookings.</p>
+        {exportError && <p className="err" role="alert">{exportError}</p>}
         {editing && <p className="muted">Save or cancel your edit before changing the date filters.</p>}
         <div className="observance-legend" aria-label="Event colours">
           <span className="happy">Wiladat / Eid</span>
