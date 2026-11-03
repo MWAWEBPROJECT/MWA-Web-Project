@@ -16,6 +16,10 @@ test('module permissions, expiry, owner protection and direct-write denial',{ski
    if(['events','owner','legacy'].includes(uid))assert.equal((await getDoc(doc(db,'events/private'))).exists(),true);else await assert.rejects(getDoc(doc(db,'events/private')),/permission/i);
    if(['tools','owner','legacy'].includes(uid)){await getDoc(doc(db,'auditLog/private'));await getDocs(collection(db,'adminAllowlist'));}else{await assert.rejects(getDoc(doc(db,'auditLog/private')),/permission/i);await assert.rejects(getDocs(collection(db,'adminAllowlist')),/permission/i)}
    for(const path of ['adminAllowlist/'+email,'users/'+uid,'events/private','calendarSettings/hijri'])await assert.rejects(setDoc(doc(db,path),{role:'admin',modules:['tools-automation']}),/permission/i);
+   for(const path of ['registrationForms/private','registrationForms/private/responses/private','registrationListings/private','_registrationRateLimits/private']){
+    await assert.rejects(getDoc(doc(db,path)),/permission/i);
+    await assert.rejects(setDoc(doc(db,path),{answers:{name:'forged'}}),/permission/i);
+   }
   }
   const revoked=client('revoked','revoked@example.org');await seed('users/revoked',{role:str('admin')});await assert.rejects(getDoc(doc(revoked,'events/private')),/permission/i);
  }finally{for(const {app,db}of clients){await terminate(db);await deleteApp(app)}}

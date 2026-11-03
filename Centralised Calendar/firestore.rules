@@ -78,6 +78,11 @@ service cloud.firestore {
     match /_enquiryMailMessages/{path=**} { allow read, write: if false; }
     match /_enquiryRateLimits/{path=**} { allow read, write: if false; }
 
+    // Forms and responses are served by the scoped registration API only.
+    match /registrationForms/{path=**} { allow read, write: if false; }
+    match /registrationListings/{path=**} { allow read, write: if false; }
+    match /_registrationRateLimits/{path=**} { allow read, write: if false; }
+
     // ── Audit log ────────────────────────────────────────────────────────────
     // Admin-only, and only ever written by Cloud Functions (Admin SDK).
     match /auditLog/{entryId} {

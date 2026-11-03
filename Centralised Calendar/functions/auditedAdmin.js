@@ -61,7 +61,7 @@ function register({db,onCall,HttpsError,requireAdmin,FieldValue}) {
   });
   const recordActivity = onCall(async request=>{
     const actor=await requireAdmin(request.auth,null);const {module,action,entityId=''}=request.data || {};
-    const allowed={'module.opened':['events-bookings','calendar-management','tools-automation','website-cms','islamic-events','website'], 'session.signout':['tools-automation'], 'calendar.exported':['events-bookings'], 'appearance.changed':['website']};
+    const allowed={'module.opened':['events-bookings','calendar-management','tools-automation','website-cms','form-builder','islamic-events','website'], 'session.signout':['tools-automation'], 'calendar.exported':['events-bookings'], 'appearance.changed':['website']};
     if(!allowed[action]?.includes(module) || typeof entityId!=='string' || entityId.length>160)throw new HttpsError('invalid-argument','Unsupported activity.');
     if(action==='module.opened'&&module!=='website')await requireAdmin(request.auth,module==='islamic-events'?'calendar-management':module);
     if(action==='calendar.exported')await requireAdmin(request.auth,'events-bookings');

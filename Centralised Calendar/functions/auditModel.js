@@ -1,5 +1,5 @@
 const { localToUtcIso } = require('./dateUtils');
-const MODULES = ['enquiries','events-bookings','calendar-management','tools-automation','website-cms','islamic-events','website','niaz','volunteers','members','maintenance','expenses','donations','social-media','speakers-reciters'];
+const MODULES = ['enquiries','events-bookings','calendar-management','tools-automation','website-cms','form-builder','islamic-events','website','niaz','volunteers','members','maintenance','expenses','donations','social-media','speakers-reciters'];
 function moduleFor(entry) {
   if (MODULES.includes(entry.module)) return entry.module;
   if (entry.entityType === 'admin' || String(entry.action).startsWith('admin.')) return 'tools-automation';

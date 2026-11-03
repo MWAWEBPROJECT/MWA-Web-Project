@@ -64,6 +64,11 @@
       "id": "website-cms",
       "name": "Website CMS",
       "live": true
+    },
+    {
+      "id": "form-builder",
+      "name": "Form Builder",
+      "live": true
     }
   ],
   "legacyModules": [

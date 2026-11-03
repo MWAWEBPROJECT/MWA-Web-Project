@@ -20,3 +20,9 @@ test('user and module filters combine and match historic entries',()=>{
 test('change details retain before/after values and deletions',()=>{
  assert.deepEqual(changedValues({name:'Before',active:true,updatedBy:'old'},{name:'After',updatedBy:'new'}),{name:{before:'Before',after:'After'},active:{before:true,after:null}});
 });
+test('Form Builder activity retains its own module and can be filtered independently',()=>{
+ const entry=auditEntry({module:'form-builder',entityType:'registration-form',entityId:'form',action:'registration.published',userId:'forms-admin'});
+ assert.equal(entry.module,'form-builder');
+ assert.equal(matchesAudit(entry,auditFilters({module:'form-builder'})),true);
+ assert.equal(matchesAudit(entry,auditFilters({module:'website-cms'})),false);
+});

@@ -8,8 +8,10 @@ function environment(email='ec@example.org',entry={modules:['enquiries']},role='
  const db={doc:path=>({path,get:async()=>({exists:docs.has(path),data:()=>docs.get(path)})})};
  return {db,docs,auth:{uid:'u',token:{email,email_verified:true,firebase:{sign_in_provider:'google.com'}}}};
 }
-test('existing members default to all current modules; explicit empty access grants none',()=>{
- assert.deepEqual(effectiveModules({}),catalogue.modules.map(m=>m.id));assert.deepEqual(effectiveModules({modules:[]}),[]);
+test('legacy members keep the fixed baseline; Form Builder requires an explicit grant',()=>{
+ assert.deepEqual(effectiveModules({}),catalogue.legacyModules);assert.deepEqual(effectiveModules({modules:[]}),[]);
+ assert.equal(hasModule('ec@example.org',{},'form-builder'),false);
+ assert.deepEqual(validateModules(['form-builder']),['form-builder']);
  assert.equal(hasModule('ec@example.org',{modules:['enquiries']},'website-cms'),false);
  assert.throws(()=>validateModules(['unknown']));assert.throws(()=>validateModules(undefined));
 });

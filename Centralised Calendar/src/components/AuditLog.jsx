@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {getAuditEntries} from '../services/auditService.js';
-const MODULES=[['enquiries','Contact & Enquiries'],['events-bookings','Events & Bookings'],['calendar-management','Calendar Management'],['tools-automation','Tools & Automation'],['website-cms','Website CMS'],['islamic-events','Key Islamic Events'],['website','Website'],['niaz','Niaz'],['volunteers','Volunteers'],['members','Members'],['maintenance','Maintenance'],['expenses','Expenses'],['donations','Donations'],['social-media','Social Media'],['speakers-reciters','Speakers & Reciters']];
+const MODULES=[['enquiries','Contact & Enquiries'],['events-bookings','Events & Bookings'],['calendar-management','Calendar Management'],['tools-automation','Tools & Automation'],['website-cms','Website CMS'],['form-builder','Form Builder'],['islamic-events','Key Islamic Events'],['website','Website'],['niaz','Niaz'],['volunteers','Volunteers'],['members','Members'],['maintenance','Maintenance'],['expenses','Expenses'],['donations','Donations'],['social-media','Social Media'],['speakers-reciters','Speakers & Reciters']];
 const blank={user:'',from:'',to:'',module:''};
 export default function AuditLog() {
  const [draft,setDraft]=useState(blank),[filters,setFilters]=useState(blank),[rows,setRows]=useState([]),[cursor,setCursor]=useState(null),[busy,setBusy]=useState(true),[error,setError]=useState('');const generation=useRef(0);

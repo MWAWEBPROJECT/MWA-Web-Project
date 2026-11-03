@@ -16,6 +16,7 @@ exports.websiteCmsApi=onRequest({region:'australia-southeast1',maxInstances:3},a
  const origin=req.get('Origin');if(origin&&origins.has(origin)){res.set('Access-Control-Allow-Origin',origin);res.set('Vary','Origin');res.set('Access-Control-Allow-Headers','Authorization, Content-Type');res.set('Access-Control-Allow-Methods','GET, PUT, POST, PATCH, OPTIONS')}
  if(req.method==='OPTIONS')return res.status(origin&&origins.has(origin)?204:403).end();
  try{
+  if(/^\/api\/registrations(?:\/|$)/.test(req.path))return require('./registrations-api').handle(req,res,{db,getAuth,origins});
   if(/^\/api\/enquiries(?:\/|$)/.test(req.path))return require('./enquiries-api').handle(req,res,{db,getAuth,origins});
   const socialRoute=req.path.replace(/\/$/,'').endsWith('/social-moderation');
   if(socialRoute){
