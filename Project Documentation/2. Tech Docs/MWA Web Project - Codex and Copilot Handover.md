@@ -3,9 +3,15 @@
 
 # MWA Web Project — Codex / Copilot handover
 
-Last updated: **3 November 2026, Australia/Sydney** by GitHub Copilot.
-Latest application release: **3 November 2026 follow-up release**, with this handover and the related source/tests saved in the same authorised local commit. Parent application commit: **9063c44** (initial Form Builder and Registrations); preceding baseline **1f3e703**. No Git push was requested or performed.
+Last updated: **3 November 2026, Australia/Sydney** by GitHub Copilot (application release); ownership documentation consolidated by Codex on the same date.
+Latest application release: **7119c6a** (3 November follow-up release), following **9063c44** (initial Form Builder and Registrations); preceding baseline **1f3e703**. Both application commits were pushed successfully to the MWA-owned GitHub repository on 3 November 2026 after explicit user authorisation.
 Current state: Form Builder follow-ups and Islamic Events import-format Excel download are deployed successfully. Thank-you wording, filtered Excel exports, response filters/admin corrections and direct Copy/WhatsApp/Text sharing are included. Live website/calendar HTML and changed bundles match the canonical local production build by SHA-256; websiteCmsApi is remotely ACTIVE. The requested 54-observance 1448 AH workbook remains in Downloads. See the latest release checkpoint for verification limits. Recurring-only donations remain the previously deployed sandbox baseline.
+
+## Major milestone — MWA ownership transfer complete
+
+> **Ownership milestone completed — 3 November 2026.** Firebase/Google Cloud and GitHub are now MWA-controlled; Sajjad retains developer access. See [MWA Project - Ownership Transfer Completion Record - 2026-11-03.md](<MWA Project - Ownership Transfer Completion Record - 2026-11-03.md>) for verified owners, roles, billing, security cleanup and remaining items. Earlier migration/pending statements below are historical and superseded by that record.
+
+MWA admin is sole direct Firebase project Owner and controls the destination organisation/billing account. GitHub repository ownership is `MWAWEBPROJECT/MWA-Web-Project`; Sajjad has scoped Cloud development roles and GitHub write access without repository administration. Existing personal card is retained by agreement. No project rebuild or source-history replacement occurred.
 
 ## Start here
 
@@ -452,3 +458,24 @@ GitHub acceptance troubleshooting: user reports the email link says the reposito
 
 ### GitHub transfer completed — 3 November 2026
 User accepted transfer after signing into the correct receiving account. Verified stable repository ID 1400819702 now resolves to MWAWEBPROJECT/MWA-Web-Project. Public visibility unchanged; remote main SHA remains 1f3e7034558e8f4e7218f8f85792b1debdff6bc0, matching pre-transfer history. SAJ0786 collaborator permission verified write/push=true and admin=false/maintain=false. Canonical local origin updated to https://github.com/MWAWEBPROJECT/MWA-Web-Project.git. No new repository created, history rewritten, code pushed or deployment performed. Local HEAD 9063c44 and existing uncommitted application/documentation work remain preserved and unpublished. Handover updated locally; shared-document changes still uncommitted alongside other work. Future pushes must use the new remote; never recreate the old repository path because that breaks redirects. GitHub Apps/connectors may need the MWA account to grant access to the transferred repository if those integrations cannot see it.
+
+
+### Ownership documentation consolidation — 3 November 2026 (Codex)
+
+User requested prominent documentation of this major change. Created the dedicated Ownership Transfer Completion Record dated 2026-11-03 and linked it from this handover, the technical documentation index, repository guide, ownership execution plan and email/ownership guide. Recorded before/after ownership, exact roles, billing/card distinction, preserved security policies, temporary-access cleanup, verified checks and limits, new GitHub remote and remaining external-provider/connector work. Historical pending checkpoints are explicitly superseded; application-release notes are preserved.
+
+Read-back and local link checks passed. Documentation only: no application edits, commit, push or deployment. At start of this documentation update canonical worktree was clean and HEAD was 7119c6a, following 9063c44; earlier local-work snapshots above are historical. Origin is https://github.com/MWAWEBPROJECT/MWA-Web-Project.git. This step did not re-query cloud state or remote main: verification evidence is from the completed transfer, whose last remote main was 1f3e7034558e8f4e7218f8f85792b1debdff6bc0. Keep publication status separate from ownership status.
+
+### Application commits pushed to GitHub - 3 November 2026
+
+User explicitly requested the push at 17:15 Sydney. Verified the current origin is the transferred repository `MWAWEBPROJECT/MWA-Web-Project`, stable repository ID 1400819702. Normal `git push origin main` succeeded, advancing remote main from `1f3e703` to `7119c6a8fd5af518177cebfd2fd1fa68b301519b` and publishing both application commits `9063c44` and `7119c6a`. No force push, remote replacement or new deployment occurred. Local application HEAD and remote main were verified equal after the push.
+
+GitHub now contains today's Form Builder/Registrations implementation, response editing/filtering/Excel tools, direct form sharing and Islamic Events import-format Excel download, with tests and the release handover as committed in `7119c6a`. Concurrent ownership-documentation edits appeared during the push and remain local, preserved without staging or publishing unfinished work. This latest push-status update is local alongside those shared-document edits. The previously verified live deployment is unchanged.
+
+### Remaining ownership documentation publication - 3 November 2026
+
+User explicitly requested "Please push all" at 17:22 Sydney, including the remaining ownership documentation. Reviewed the five related Markdown records and index, then added narrow `.gitignore` exceptions for those named documents only: the Ownership Transfer Completion Record, execution plan, repository guide, email/ownership guide and technical-documentation README. The existing shared handover remains tracked. Other documents, credentials, private configuration, environment files, dependencies and generated output stay excluded; no broad force-add or ignore-rule removal was used.
+
+The public completion record omits the previous personal/shared billing-account identifier and developer's personal email. No credential, OAuth JSON, private key or payment-card details are included. Updated publication state to distinguish the already-pushed application commits from the earlier transfer-only history, and clarified that other historical guides linked from the index can remain local.
+
+This documentation-only commit includes the reviewed ownership records, index, shared handover and narrow ignore exceptions. Application source and the verified live deployment are unchanged. Verification before commit: staged whitespace checks passed, the staged scope contained exactly the seven intended files, no credential-pattern matches were found in staged documentation, and origin was confirmed as `https://github.com/MWAWEBPROJECT/MWA-Web-Project.git`. Publication uses a normal push to main, with remote/local HEAD equality and a clean non-ignored worktree checked afterward; any failure must be recorded rather than reported as success.
