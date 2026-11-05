@@ -1,6 +1,6 @@
 ﻿const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateImportRows, normaliseDate, resolveHijriDate } = require('./bookingImport');
+const { validateImportRows, normaliseDate, resolveHijriDate, importIds } = require('./bookingImport');
 const { adjustedGregorianToIslamic } = require('./hijriService');
 const { toOrgTimeParts } = require('./dateUtils');
 
@@ -67,4 +67,8 @@ test('legacy ISO dates still accepted for Gregorian rows', () => {
 test('error message names the DD/MM/YYYY format', () => {
   const r = validateImportRows([row({ Date: 'tomorrow' })], ctx());
   assert.match(r.errors[0].message, /DD\/MM\/YYYY/);
+});
+
+test('importIds accepts workbook header variants and returns unique bounded IDs', () => {
+  assert.deepEqual(importIds([{ ID: ' event-1 ' }, { booking_id: 'event-1' }, { Id: 'bad/id' }, { Title: 'no id' }]), ['event-1']);
 });

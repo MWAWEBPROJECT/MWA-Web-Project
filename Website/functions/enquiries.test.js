@@ -7,11 +7,17 @@ test('public form validates input, honeypot and idempotency key',()=>{
 });
 test('incoming mail suppresses loops and flags mismatched/failed-auth senders',()=>{
  const thread={email:'visitor@example.com',status:'resolved'};
- const msg=(from,headers=[],labelIds=[])=>({labelIds,payload:{headers:[{name:'From',value:from},...headers]}});
+ const aligned={name:'Authentication-Results',value:'mx.google.com; spf=pass smtp.mailfrom=example.com; dkim=pass header.i=@example.com; dmarc=pass header.from=example.com'};
+ const msg=(from,headers=[aligned],labelIds=[])=>({labelIds,payload:{headers:[{name:'From',value:from},...headers]}});
  assert.equal(C.inboundDecision(thread,msg('Visitor <visitor@example.com>')),'accept');
  assert.equal(C.inboundDecision({...thread,status:'spam'},msg(thread.email)),'suppressed');
  assert.equal(C.inboundDecision(thread,msg('other@example.com')),'review');
  assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Authentication-Results',value:'mx.google.com; dmarc=fail'}])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Authentication-Results',value:'mx.google.com; dmarc=neutral header.from=example.com'}])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Authentication-Results',value:'attacker.example; dmarc=pass header.from=example.com'}])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Authentication-Results',value:'mx.google.com; dmarc=pass header.from=attacker.example'}])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[aligned,{name:'Authentication-Results',value:'mx.google.com; dmarc=pass header.from=example.com'}])),'review');
  assert.equal(C.inboundDecision(thread,msg(C.OWNER)),'ignore');
  assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Auto-Submitted',value:'auto-replied'}])),'ignore');
  assert.equal(C.inboundDecision(thread,msg(thread.email,[],['SENT'])),'ignore');

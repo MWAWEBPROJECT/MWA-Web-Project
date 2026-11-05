@@ -40,6 +40,12 @@ function normaliseHeaders(row) {
   return out;
 }
 
+function importIds(rawRows) {
+  return [...new Set((Array.isArray(rawRows) ? rawRows : [])
+    .map(row => cleanText(normaliseHeaders(row).id, 40))
+    .filter(id => /^[A-Za-z0-9_-]{1,40}$/.test(id)))];
+}
+
 /**
  * Parses a date cell into {y,m,d} (or null). Accepted: 'DD/MM/YYYY' (day first, also '-' or '.'
  * separators), legacy 'YYYY-MM-DD', and (Gregorian only) an Excel serial number.
@@ -263,5 +269,5 @@ function validateImportRows(rawRows, ctx) {
 }
 
 module.exports = {
-  validateImportRows, normaliseDate, resolveHijriDate, normaliseTime, cleanText, MAX_IMPORT_ROWS
+  validateImportRows, normaliseDate, resolveHijriDate, normaliseTime, cleanText, importIds, MAX_IMPORT_ROWS
 };

@@ -1,20 +1,9 @@
 // Events/bookings service.
 //
-// Admins read the live `events` collection directly (allowed by
-// firestore.rules). Public visitors never read/write that collection
-// directly — they go through Cloud Functions so conflict checks and
-// visibility filtering are always enforced server-side, not just in the UI.
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+// Public visitors and admins read event data through server-side Functions so
+// query bounds, authorization, conflict checks, and visibility are enforced centrally.
 import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../firebase/firebase';
-
-/** Admin-only live view of every booking (any status/visibility). */
-export function watchAllEvents(callback, onError) {
-  const q = query(collection(db, 'events'), orderBy('startAt'));
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, onError);
-}
+import { functions } from '../firebase/firebase';
 
 /**
  * Public submission. Always lands as status "pending" — the server decides
@@ -24,6 +13,21 @@ export function watchAllEvents(callback, onError) {
 export async function submitBooking(payload) {
   const fn = httpsCallable(functions, 'submitBooking');
   const res = await fn(payload);
+  return res.data;
+}
+
+export async function startBookingVerification(payload) {
+  const res = await httpsCallable(functions, 'startBookingVerification')(payload);
+  return res.data;
+}
+
+export async function verifyBookingEmailCode(payload) {
+  const res = await httpsCallable(functions, 'verifyBookingEmailCode')(payload);
+  return res.data;
+}
+
+export async function verifyBookingMobile(payload) {
+  const res = await httpsCallable(functions, 'verifyBookingMobile')(payload);
   return res.data;
 }
 
@@ -44,8 +48,29 @@ export async function updateBooking(eventId, patch) {
 /** Public, read-only, sanitized events for the public calendar (no auth). */
 export async function fetchPublicEvents({ from, to } = {}) {
   const fn = httpsCallable(functions, 'getPublicEvents');
-  const res = await fn({ from, to });
-  return res.data?.events || [];
+  const events = [];
+  let cursor = null;
+  for (let page = 0; page < 5; page += 1) {
+    const res = await fn({ from, to, cursor });
+    events.push(...(res.data?.events || []));
+    cursor = res.data?.nextPageCursor || null;
+    if (!cursor) return events;
+  }
+  throw new Error('There are too many calendar events in this date range to load safely. Narrow the date range and try again.');
+}
+
+/** Admin-only event history for a bounded calendar range, loaded in stable cursor pages. */
+export async function fetchAdminEvents({ from, to }) {
+  const fn = httpsCallable(functions, 'getAdminEvents');
+  const events = [];
+  let cursor = null;
+  for (let page = 0; page < 50; page += 1) {
+    const res = await fn({ from, to, cursor });
+    events.push(...(res.data?.events || []));
+    cursor = res.data?.nextPageCursor || null;
+    if (!cursor) return events;
+  }
+  throw new Error('There are too many bookings to load at once. Apply a narrower date filter and try again.');
 }
 
 /** Admin edit; `scope` ('single' | 'future' | 'all') applies shared fields/time-of-day across a recurring series. */

@@ -30,33 +30,56 @@ async function sendAll(messages) {
 const emailSecrets = [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM];
 
 let cachedTransporter;
+function smtpTransportOptions({ host, port, user, pass }) {
+  const resolvedPort = Number(port || 587);
+  if (![465, 587].includes(resolvedPort)) throw new Error('SMTP must use implicit TLS on port 465 or STARTTLS on port 587.');
+  return {
+    host,
+    port: resolvedPort,
+    secure: resolvedPort === 465,
+    requireTLS: resolvedPort === 587,
+    tls: { rejectUnauthorized: true },
+    auth: { user, pass }
+  };
+}
+
 function buildTransporter() {
   const host = SMTP_HOST.value();
   const user = SMTP_USER.value();
   const pass = SMTP_PASS.value();
   if (!host || !user || !pass) return null;
   if (cachedTransporter) return cachedTransporter;
-  const port = Number(SMTP_PORT.value() || 587);
-  cachedTransporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+  cachedTransporter = nodemailer.createTransport(smtpTransportOptions({
+    host, port: SMTP_PORT.value(), user, pass
+  }));
   return cachedTransporter;
+}
+
+async function sendWithTransport(transporter, message, from, logger) {
+  try {
+    await transporter.sendMail({ from, ...message });
+    return { sent: true };
+  } catch (err) {
+    logger.error('[email] Send failed', { to: message.to, subject: message.subject, error: String(err) });
+    return { sent: false, reason: 'send-error' };
+  }
 }
 
 /** Best-effort send. Resolves to {sent:boolean, reason?} — never throws. */
 async function sendMail({ to, cc, replyTo = DEFAULT_REPLY_TO, subject, text, html, attachments }) {
   if (!to) return { sent: false, reason: 'no-recipient' };
-  const transporter = buildTransporter();
-  if (!transporter) {
-    logger.warn('[email] Not configured — skipping send.', { to, subject });
-    return { sent: false, reason: 'not-configured' };
-  }
   try {
+    const transporter = buildTransporter();
+    if (!transporter) {
+      logger.warn('[email] Not configured — skipping send.', { to, subject });
+      return { sent: false, reason: 'not-configured' };
+    }
     const from = EMAIL_FROM.value() || SMTP_USER.value();
-    await transporter.sendMail({ from, to, cc, replyTo, subject, text, html, attachments });
-    return { sent: true };
+    return await sendWithTransport(transporter, { to, cc, replyTo, subject, text, html, attachments }, from, logger);
   } catch (err) {
-    logger.error('[email] Send failed', { to, subject, error: String(err) });
+    logger.error('[email] Transport configuration failed', { to, subject, error: String(err) });
     return { sent: false, reason: 'send-error' };
   }
 }
 
-module.exports = { sendMail, sendAll, emailSecrets };
+module.exports = { sendMail, sendAll, emailSecrets, smtpTransportOptions, sendWithTransport };

@@ -1,11 +1,11 @@
 import BookingEmailAction from './components/BookingEmailAction.jsx';
 import {CalendarManagement,ToolsAutomation} from './pages/ModulePages.jsx';
 import {recordActivity} from './services/auditService.js';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { firebaseConfigured } from './firebase/firebase.js';
 import { watchVenues, watchDepartments } from './services/directoryService.js';
-import { watchAllEvents, fetchPublicEvents } from './services/eventsService.js';
+import { fetchAdminEvents, fetchPublicEvents } from './services/eventsService.js';
 import { getHijriSettings,watchHijriSettings } from './services/calendarSettingsService.js';
 import { dateKeyInOrgTz } from './utils/dateUtils.js';
 import Header from './components/Header.jsx';
@@ -26,6 +26,7 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [hijriOverrides, setHijriOverrides] = useState([]);
   const [publicLoadTick, setPublicLoadTick] = useState(0);
+  const [publicRange, setPublicRange] = useState(null);
   const [newBooking, setNewBooking] = useState(null); // { date } when the header's New booking dialog is open
 
   // Presentation entry point from the website. Guests still open the public calendar.
@@ -48,23 +49,25 @@ export default function App() {
     return watchHijriSettings(s => setHijriOverrides(s.overrides || []),()=>{});
   }, []);
 
-  // Admin: realtime full collection. Public: fetch sanitized events via a
-  // Cloud Function (no direct Firestore access) and refetch on demand.
+  // Admin history and public events load through bounded server-side pages.
   useEffect(() => {
     if (!firebaseConfigured) return undefined;
     if (moduleView) return undefined;
-    if (isAdmin) {
-      return watchAllEvents(setEvents, () => setEvents([]));
-    }
     let cancelled = false;
-    fetchPublicEvents().then(list => { if (!cancelled) setEvents(list); }).catch(() => setEvents([]));
+    const load = isAdmin
+      ? publicRange ? fetchAdminEvents(publicRange) : Promise.resolve([])
+      : publicRange ? fetchPublicEvents(publicRange) : Promise.resolve([]);
+    load.then(list => { if (!cancelled) setEvents(list); }).catch(() => { if (!cancelled) setEvents([]); });
     return () => { cancelled = true; };
-  }, [isAdmin, publicLoadTick,moduleView]);
+  }, [isAdmin, publicLoadTick, moduleView, publicRange]);
 
   useEffect(()=>{if(isAdmin)recordActivity(tab==='tools'?'tools-automation':tab==='calendar-management'?'calendar-management':tab==='islamic-events'?'islamic-events':'events-bookings','module.opened',tab);},[tab,isAdmin]);
 
   useEffect(()=>{if(!isAdmin){setEvents([]);setNewBooking(null);setTab(current=>current==='admin'?'calendar':current)}},[isAdmin]);
   const reloadPublic = () => setPublicLoadTick(t => t + 1);
+  const updatePublicRange = useCallback(range => {
+    setPublicRange(current => current?.from === range.from && current?.to === range.to ? current : range);
+  }, []);
 
   if (!firebaseConfigured) {
     return (
@@ -89,7 +92,8 @@ export default function App() {
           {tab === 'islamic-events' && <IslamicEventsPage hijriOverrides={hijriOverrides} departments={departments} venues={venues} />}
           {tab === 'calendar' && (
             <CalendarPage events={events} venues={venues} departments={departments}
-              isAdmin={isAdmin} hijriOverrides={hijriOverrides} onSaved={reloadPublic} />
+              isAdmin={isAdmin} hijriOverrides={hijriOverrides} onSaved={reloadPublic}
+              onPublicRangeChange={updatePublicRange} />
           )}
           {tab === 'bookings' && (
             <div className="page-panel glass-panel">

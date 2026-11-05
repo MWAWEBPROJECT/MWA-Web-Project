@@ -176,9 +176,10 @@ export function AuthProvider({ children }) {
     await signOut(auth);
     window.top.location.replace('/');
   };
-  const ownerIdentity=!!user?.emailVerified&&email===OWNER_EMAIL;
+  const ownerIdentity=!!user?.emailVerified&&email===OWNER_EMAIL&&profile?.email?.toLowerCase()===email;
   const provider=user?.providerData?.some(p=>p.providerId==='google.com')?'google.com':'password';
-  const isAdmin=profile?.role==='admin' && (ownerIdentity||!!teamEntry) && !(passwordLoginDisabled&&provider==='password');
+  const boundTeamIdentity=!!teamEntry&&teamEntry.uid===user?.uid&&profile?.email?.toLowerCase()===email;
+  const isAdmin=profile?.role==='admin' && (ownerIdentity||boundTeamIdentity) && !(passwordLoginDisabled&&provider==='password');
   if(isAdmin)hadSession.current=true;
   const isOwner=isAdmin&&ownerIdentity;
   const accessExpired=!isOwner&&!accessActive(teamEntry);

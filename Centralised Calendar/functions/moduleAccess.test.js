@@ -4,7 +4,7 @@ const {validateExpiry,register}=require('./teamPermissions');
 const {OWNER_EMAIL}=require('./adminAccess');
 const catalogue=require('./adminModules.json');
 function environment(email='ec@example.org',entry={modules:['enquiries']},role='admin'){
- const docs=new Map([['users/u',{role}],['adminAllowlist/'+email,entry]]);
+ const docs=new Map([['users/u',{role,email}],['adminAllowlist/'+email,{...entry,uid:entry.uid||'u'}]]);
  const db={doc:path=>({path,get:async()=>({exists:docs.has(path),data:()=>docs.get(path)})})};
  return {db,docs,auth:{uid:'u',token:{email,email_verified:true,firebase:{sign_in_provider:'google.com'}}}};
 }
@@ -22,6 +22,18 @@ test('live allowlist enforces module isolation, revocation, expiry, role and pas
  e.docs.delete('adminAllowlist/ec@example.org');assert.equal(await resolveAdmin(e.db,'u',e.auth.token,'enquiries'),null);
  const member=environment('member@example.org',{modules:['enquiries']},'member');assert.equal(await resolveAdmin(member.db,'u',member.auth.token,'enquiries'),null);
  const pw=environment();pw.docs.set('calendarSettings/auth',{passwordLoginDisabled:true});pw.auth.token.firebase.sign_in_provider='password';assert.equal(await resolveAdmin(pw.db,'u',pw.auth.token,'enquiries'),null);
+});
+test('admin access requires a matching stored identity and UID-bound grant',async()=>{
+ const legacy=environment();legacy.auth.token.email_verified=false;
+ assert.ok(await resolveAdmin(legacy.db,'u',legacy.auth.token,'enquiries'));
+ const changed=environment();changed.auth.token.email='new@example.org';changed.auth.token.email_verified=false;
+ changed.docs.set('adminAllowlist/new@example.org',{uid:'u',modules:['enquiries']});
+ assert.equal(await resolveAdmin(changed.db,'u',changed.auth.token,'enquiries'),null);
+ changed.auth.token.email_verified=true;
+ assert.equal(await resolveAdmin(changed.db,'u',changed.auth.token,'enquiries'),null);
+ changed.docs.set('users/u',{role:'admin',email:'new@example.org'});
+ changed.docs.set('adminAllowlist/new@example.org',{uid:'another-uid',modules:['enquiries']});
+ assert.equal(await resolveAdmin(changed.db,'u',changed.auth.token,'enquiries'),null);
 });
 test('verified owner keeps indefinite access; unverified owner does not bypass checks',async()=>{
  const e=environment(OWNER_EMAIL,{modules:[],accessExpiresAt:new Date(0)});

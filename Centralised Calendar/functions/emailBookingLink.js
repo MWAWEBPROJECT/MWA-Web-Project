@@ -11,7 +11,7 @@ async function issueLink(db,eventId,event){
  const url=decision=>ORIGIN+'/booking-response?t='+token+'&decision='+decision;
  return {approve:url('approve'),reject:url('reject')};
 }
-function service({db,FieldValue,findOverlaps,recomputeVenueConflicts,sendAll,notify,getHijriOverrides,hijriInfoFor,dateKeyOf,logger}){
+function service({db,FieldValue,findOverlaps,recomputeVenueConflicts,refreshConflictNeighborhood,sendAll,notify,getHijriOverrides,hijriInfoFor,dateKeyOf,logger}){
  function tokenRef(token){if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))failure('This approval link is invalid.');return db.doc('_bookingEmailActions/'+hash(token));}
  async function inspect(token,decision,tx){
   if(!['approve','reject'].includes(decision))failure('This action is invalid.');
@@ -28,16 +28,16 @@ function service({db,FieldValue,findOverlaps,recomputeVenueConflicts,sendAll,not
   return {ref,grant,eventRef,event};
  }
  async function decide(token,decision){
-  let saved,id,grantRef;const status=decision==='approve'?'confirmed':'rejected';
+  let saved,before,id,grantRef;const status=decision==='approve'?'confirmed':'rejected';
   await db.runTransaction(async tx=>{
-   const {ref,grant,eventRef,event}=await inspect(token,decision,tx);
+   const {ref,grant,eventRef,event}=await inspect(token,decision,tx);before=event;
    if(decision==='approve'&&(await findOverlaps(event.venueId,event.startAt,event.endAt,grant.eventId,tx)).length)failure('This booking now conflicts with another booking and cannot be approved. You may still use the Reject link in the email.');
    const patch={status,decidedBy:'email-link',decidedByEmail:null,decisionSource:'events-admin-email-link',decidedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),decisionNote:'',...(decision==='approve'?{hasConflict:false,conflictWith:[]}:{})};
    tx.update(eventRef,patch);tx.update(ref,{used:true,usedAt:FieldValue.serverTimestamp(),decision});
    tx.set(db.collection('auditLog').doc(),{module:'events-bookings',entityType:'event',entityId:grant.eventId,action:'status_'+status,userId:null,userEmail:null,timestamp:new Date().toISOString(),note:'Confirmed using single-use link delivered to Events/Admin inboxes; individual identity not authenticated.',diff:{from:event.status,to:status},authMethod:'email-link'});
    saved={...event,...patch};id=grant.eventId;grantRef=ref;
   });
-  await recomputeVenueConflicts([saved.venueId]).catch(error=>logger.error('Email-link conflict refresh failed',error));
+  await refreshConflictNeighborhood([{id,before,after:saved}]).catch(error=>logger.error('Email-link conflict refresh failed',error));
   let sent=false;
   try{const hijri=hijriInfoFor(dateKeyOf(saved.startAt),await getHijriOverrides());const message=notify.decisionRequester(saved,hijri,status,'');if(message&&status==='confirmed')message.attachments=[notify.icsAttachment(saved,id)];const results=await sendAll([message]);sent=results?.[0]?.sent===true;}catch(error){logger.error('Email-link decision notification failed',error);}
   await grantRef.update({notificationSent:sent}).catch(()=>{});

@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { HIJRI_MONTHS, hijriToGregorian, getHijriParts, getTodayHijriParts } from '../services/hijriService.js';
 import { localToUtcIso, formatInOrgTz, dateKeyInOrgTz, timeKeyInOrgTz } from '../utils/dateUtils.js';
 import { adjustPublicBookingStart, earliestAllowedPublicStart, MIN_PUBLIC_LEAD_HOURS } from '../utils/publicLeadTime.js';
 import {
   submitBooking, decideBooking, updateBookingScoped, createRecurringBooking, deleteBooking,
-  checkSlotConflicts, previewRecurringBooking
+  checkSlotConflicts, previewRecurringBooking, startBookingVerification,
+  verifyBookingEmailCode, verifyBookingMobile
 } from '../services/eventsService.js';
+import { clearBookingPhoneRecaptcha, confirmBookingPhoneCode, sendBookingPhoneCode } from '../services/phoneBookingAuth.js';
 import {
   PRAYER_OPTIONS, MAX_OFFSET_MINUTES, calculatePrayerTimes, prayerLabel, applyPrayerOffset, resolvePrayerSchedule
 } from '../utils/prayerTimes.js';
@@ -68,6 +70,19 @@ function BookingModalInner({
   const [conflictErr, setConflictErr] = useState('');
   const [preview, setPreview] = useState(null);
   const [protectionWarning, setProtectionWarning] = useState('');
+  const [verificationMethod, setVerificationMethod] = useState('email');
+  const [bookingVerification, setBookingVerification] = useState(null);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [resendAt, setResendAt] = useState(0);
+  const [resendClock, setResendClock] = useState(Date.now());
+  const [phoneConfirmation, setPhoneConfirmation] = useState(null);
+  const [phoneIdToken, setPhoneIdToken] = useState('');
+  const verificationSessionId = useRef(null);
+  if (!verificationSessionId.current) {
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    verificationSessionId.current = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
   // Admin-only MWA Programs extras saved in this dialog (the `editing` prop may lag the live snapshot).
   const [extras, setExtras] = useState(null);
   const [extrasSection, setExtrasSection] = useState(null);
@@ -78,7 +93,26 @@ function BookingModalInner({
     setErr(''); setOk(''); setLocked(false); setEditMode(false); setScope('single');
     setRep(DEFAULT_REPEAT); setConflict(null); setPreview(null);
     setProtectionWarning(''); setExtras(null); setExtrasSection(null);
+    setBookingVerification(null); setVerificationCode(''); setPhoneConfirmation(null); setPhoneIdToken('');
+    setResendAt(0);
+    setVerificationMethod('email'); clearBookingPhoneRecaptcha();
   }, [selectedBooking, open, initialDate, isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin) return;
+    setBookingVerification(null);
+    setVerificationCode('');
+    setResendAt(0);
+    setPhoneConfirmation(null);
+    setPhoneIdToken('');
+    clearBookingPhoneRecaptcha();
+  }, [form, isAdmin]);
+
+  useEffect(() => {
+    if (!resendAt) return undefined;
+    const timer = setInterval(() => setResendClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [resendAt]);
 
   const bookingTypes = useMemo(() => availableBookingTypes(departments, isAdmin), [departments, isAdmin]);
   useEffect(() => {
@@ -224,6 +258,110 @@ function BookingModalInner({
     startPrayer, endPrayer
   });
 
+  function publicBookingPayload() {
+    if (!range) throw new Error('Choose a valid booking date and time.');
+    return {
+      timeMode: form.timeMode,
+      title: form.title, departmentId: form.departmentId, venueId: form.venueId,
+      startAt: range.startAt, endAt: range.endAt,
+      dateBasis: form.basis,
+      hijriDate: form.basis === 'h' ? { day: Number(form.hDay), month: Number(form.hMonth), year: Number(form.hYear) } : null,
+      contactName: form.contactName, contactEmail: form.contactEmail, contactPhone: form.contactPhone,
+      notes: form.notes, visibility: form.visibility,
+      ...programPayload()
+    };
+  }
+
+  function chooseVerificationMethod(method) {
+    setVerificationMethod(method);
+    setBookingVerification(null);
+    setVerificationCode('');
+    setResendAt(0);
+    setPhoneConfirmation(null);
+    setPhoneIdToken('');
+    clearBookingPhoneRecaptcha();
+    setErr('');
+  }
+
+  async function startPublicVerification() {
+    setErr(''); setOk('');
+    if (!form.title || !form.departmentId || !form.venueId || !gregorianDate || !form.start || !form.end || !form.contactName) {
+      setErr('Please fill in the booking details, date, time and contact name before verification.');
+      return;
+    }
+    if (verificationMethod === 'email' && !form.contactEmail) {
+      setErr('Enter the email address you want to verify.');
+      return;
+    }
+    if (verificationMethod === 'mobile' && !form.contactPhone) {
+      setErr('Enter the mobile number you want to verify.');
+      return;
+    }
+    if (!range || new Date(range.endAt) <= new Date(range.startAt)) {
+      setErr('End time must be after start time.');
+      return;
+    }
+    if (new Date(range.startAt).getTime() < earliestAllowedPublicStart()) {
+      setErr(`Public bookings must start at least ${MIN_PUBLIC_LEAD_HOURS} hours from now. Please choose a later time.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload = publicBookingPayload();
+      const challenge = await startBookingVerification({
+        method: verificationMethod,
+        sessionId: verificationSessionId.current,
+        booking: payload
+      });
+      setBookingVerification(challenge);
+      setResendAt(Date.now() + challenge.resendAfterMs);
+      setVerificationCode('');
+      setPhoneIdToken('');
+      if (verificationMethod === 'mobile') {
+        const phone = payload.contactPhone.replace(/[ ()-]/g, '');
+        setPhoneConfirmation(await sendBookingPhoneCode(phone));
+      }
+    } catch (error) {
+      setErr(error?.message || 'Could not start contact verification. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmPublicVerification() {
+    if (!bookingVerification) return;
+    setErr(''); setBusy(true);
+    try {
+      if (verificationMethod === 'email') {
+        await verifyBookingEmailCode({
+          challengeId: bookingVerification.challengeId,
+          code: verificationCode,
+          sessionId: verificationSessionId.current
+        });
+      } else {
+        let token = phoneIdToken;
+        if (!token) {
+          if (!phoneConfirmation) throw new Error('Request a mobile verification code first.');
+          token = await confirmBookingPhoneCode(phoneConfirmation, verificationCode);
+          setPhoneIdToken(token);
+          setPhoneConfirmation(null);
+        }
+        await verifyBookingMobile({
+          challengeId: bookingVerification.challengeId,
+          idToken: token,
+          sessionId: verificationSessionId.current
+        });
+      }
+      setBookingVerification(current => ({ ...current, verified: true }));
+      setPhoneIdToken('');
+      setOk('Contact verified. Submit your booking request to complete it.');
+    } catch (error) {
+      setErr(error?.message || 'The verification code could not be confirmed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const closeButton = <button type="button" className="dlg-close" onClick={onClose} aria-label="Close dialog">✕</button>;
 
   const showExtras = isAdmin && !!editing && isProgramType(departments, editing.departmentId);
@@ -365,17 +503,16 @@ function BookingModalInner({
       setErr(`Public bookings must start at least ${MIN_PUBLIC_LEAD_HOURS} hours from now. Please choose a later time.`);
       return;
     }
+    if (!isAdmin && !bookingVerification?.verified) {
+      setErr('Verify your selected email or mobile number before submitting the booking.');
+      return;
+    }
     setBusy(true);
     try {
-      const payload = {
-        timeMode: form.timeMode,
-        title: form.title, departmentId: form.departmentId, venueId: form.venueId,
-        startAt, endAt,
-        dateBasis: form.basis,
-        hijriDate: form.basis === 'h' ? { day: Number(form.hDay), month: Number(form.hMonth), year: Number(form.hYear) } : null,
-        contactName: form.contactName, contactEmail: form.contactEmail, contactPhone: form.contactPhone,
-        notes: form.notes, visibility: form.visibility,
-        ...programPayload()
+      const payload = isAdmin ? publicBookingPayload() : {
+        ...publicBookingPayload(),
+        verificationChallengeId: bookingVerification.challengeId,
+        verificationSessionId: verificationSessionId.current
       };
       const res = await submitBooking(payload);
       setOk(res?.hasConflict
@@ -620,10 +757,62 @@ function BookingModalInner({
 
             <div className="r2">
               <div><label>Contact name</label><input value={form.contactName} onChange={e => set('contactName', e.target.value)} required /></div>
-              <div><label>Contact email</label><input type="email" value={form.contactEmail} onChange={e => set('contactEmail', e.target.value)} required /></div>
+              <div><label>Contact email</label><input type="email" value={form.contactEmail} onChange={e => set('contactEmail', e.target.value)} required={isAdmin || verificationMethod === 'email'} /></div>
             </div>
-            <label>Contact phone (optional)</label>
-            <input value={form.contactPhone} onChange={e => set('contactPhone', e.target.value)} />
+            <label>Contact phone{!isAdmin && verificationMethod === 'mobile' ? '' : ' (optional)'}</label>
+            <input value={form.contactPhone} onChange={e => set('contactPhone', e.target.value)} required={!isAdmin && verificationMethod === 'mobile'} />
+            {!isAdmin && !editing && (
+              <div className="card" style={{ marginTop: 12 }}>
+                <b>Verify a contact method</b>
+                <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <input type="radio" name="booking-verification-method" style={{ width: 'auto' }} checked={verificationMethod === 'email'} onChange={() => chooseVerificationMethod('email')} />
+                    Verify by email
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <input type="radio" name="booking-verification-method" style={{ width: 'auto' }} checked={verificationMethod === 'mobile'} onChange={() => chooseVerificationMethod('mobile')} />
+                    Verify by mobile
+                  </label>
+                </div>
+                <div className="muted" style={{ marginTop: 8 }}>
+                  Only the selected contact is verified. Any other contact detail remains unverified. The code expires after 10 minutes.
+                </div>
+                <div id="booking-phone-recaptcha" />
+                {bookingVerification && (
+                  <>
+                    <div className="muted" style={{ marginTop: 8 }}>
+                      Code sent to {bookingVerification.maskedContact}. Expires {new Date(bookingVerification.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. You can request another code after one minute.
+                    </div>
+                    {!bookingVerification.verified && (
+                      <>
+                        <label htmlFor="booking-verification-code">Verification code</label>
+                        <input
+                          id="booking-verification-code"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          maxLength={6}
+                          value={verificationCode}
+                          onChange={event => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                        />
+                        <button type="button" className="btn pri" disabled={busy || verificationCode.length !== 6} onClick={confirmPublicVerification}>
+                          Verify code
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+                {bookingVerification?.verified && <div className="ok" role="status">Contact verified. Submit your request below to finish.</div>}
+                {!bookingVerification?.verified && (
+                  <button type="button" className="btn" disabled={busy || resendClock < resendAt} onClick={startPublicVerification} style={{ marginTop: 8 }}>
+                  {bookingVerification
+                    ? resendClock < resendAt
+                      ? `Send a new code in ${Math.ceil((resendAt - resendClock) / 1000)} seconds`
+                      : 'Send a new code'
+                    : 'Send verification code'}
+                  </button>
+                )}
+              </div>
+            )}
             <label>Notes (optional)</label>
             <textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
 
@@ -760,7 +949,7 @@ function BookingModalInner({
             )}
             {!editing && (
               <>
-                <button className="btn pri" disabled={busy || locked || (repeating && !!preview)} type="submit">{repeating ? 'Preview series' : 'Submit request'}</button>
+                <button className="btn pri" disabled={busy || locked || (repeating && !!preview) || (!isAdmin && !bookingVerification?.verified)} type="submit">{repeating ? 'Preview series' : 'Submit request'}</button>
                 <button className="btn" disabled={busy} type="button" onClick={clearForm}>Clear form</button>
               </>
             )}

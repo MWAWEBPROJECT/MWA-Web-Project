@@ -1,12 +1,15 @@
 {
   "name": "mwa-central-calendar-functions",
   "description": "Cloud Functions for MWA Central Calendar (conflict checks, approvals, public API, iCal feed, email seam).",
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "main": "index.js",
   "scripts": {
     "serve": "firebase emulators:start --only functions,firestore,hosting,auth",
     "deploy": "firebase deploy --only functions",
     "test": "node --test",
+    "test:emulator": "firebase emulators:exec --config ../firebase.json --only firestore --project demo-mwa \"node --test bookingSubmission.emulator.test.js conflictNeighborhood.emulator.test.js rules.emulator.test.js\"",
     "lint": "node --check index.js && node --check conflictUtils.js && node --check mailer.js && node --check hijriService.js"
   },
   "dependencies": {
@@ -15,5 +18,14 @@
     "firebase-admin": "^12.1.0",
     "firebase-functions": "^5.0.0",
     "nodemailer": "^6.9.13"
+  },
+  "overrides": {
+    "body-parser": "1.20.9"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^13.2.0",
+    "selfsigned": "^5.5.0",
+    "smtp-server": "^3.21.3"
   }
 }
