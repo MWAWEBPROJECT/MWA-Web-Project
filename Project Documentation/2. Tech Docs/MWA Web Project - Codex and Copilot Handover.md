@@ -3,9 +3,29 @@
 
 # MWA Web Project — Codex / Copilot handover
 
-Last updated: **7 November 2026, Australia/Sydney** by Copilot — CMS cleanup and emulator test isolation; no deployment.
+Last updated: **8 November 2026, Australia/Sydney** by Copilot — documentation-only recording of the coordinating session's production release evidence; this follow-up is not committed or pushed.
 
-## Read-only release preflight — 7 November 2026
+## Production release checkpoint — 8 November 2026, Australia/Sydney
+
+The coordinating session reports the following actual release state as of **7 November 2026 13:58 UTC** (8 November 2026 00:58 Sydney). This section supersedes the historical preflight, release-hold and uncommitted/undeployed statements below for the released scope. Those earlier records are retained as dated evidence, not current release status. This documentation-only follow-up did not perform a deployment, provider call or production operation.
+
+**Git and Firestore:** release commit `21290bdf4ef6f758d86383e1630e18b12f7c7b83` was pushed to `origin/main`, as reported by the coordinator. The canonical checkout was independently observed on `main` at that commit with a clean working tree before this handover edit. Firestore indexes were deployed and **30 composite indexes were READY**. Rules were deployed as ruleset `130e1167-9ef3-4afd-a36f-b9db49850aed`, with SHA matching the release commit; the prior rollback ruleset is `3e64d283-f9ac-423a-b19f-c851b027ae9c`. These references do not prove that a rollback was performed.
+
+**Calendar backend:** all **37 explicitly named Calendar functions** were deployed and observed ACTIVE at approximately 13:20 UTC. The CLI required `--force` because `onHijriSettingsChanged` newly enables retries; the observed live policy is `RETRY_POLICY_RETRY`. The new `retryHijriRecovery` Cloud Scheduler job runs every five minutes. The five pre-existing schedules were unchanged; excluded functions were not redeployed. Deployment enables the durable recovery implementation, but no live settings-change, recovery-mail or failure-injection exercise is claimed.
+
+**Website backend and IAM:** the owner granted, and the coordinating session verified, runtime Secret Accessor access on `MWA_R2_ACCESS_KEY_ID`, `MWA_R2_SECRET_ACCESS_KEY` and `YOUTUBE_DATA_API_KEY`. `websiteCmsApi`, `donationSandboxApi` and `youtubeFeedRefresh` were deployed and observed ACTIVE at approximately 13:52 UTC. The new YouTube scheduler runs every 15 minutes. With explicit user approval, the coordinator manually invoked that scheduler once: the cache contained five items, `updatedAt` was `2026-11-07T13:56:52.836Z`, and `error=false`. The public feed returned HTTP 200 with five items and `stale=false`. Initial feed requests returned the expected HTTP 503 before the first refresh; this resolved after the approved scheduler invocation. This does not establish real R2 upload/display or payment/mail behavior.
+
+**Build and Hosting:** a fresh Website and embedded Calendar build passed, with the existing large-chunk warnings. Only `hosting:website` was deployed: release `1794059871403000`, version `bde5b3447715878d`, at `2026-11-07T13:57:51Z`. `hosting:calendar` was not deployed. Earlier demo-emulator, rendering, test-isolation and model-parity results below remain local/synthetic evidence and must not be represented as production tests.
+
+**Coordinator-observed live read-only smoke:** the homepages at `mwa-community-web.web.app` and `refreshed.muhammadiwelfare.org.au` returned HTTP 200; `/calendar-app/` returned HTTP 200; the public YouTube feed returned HTTP 200 with five items; the direct `icalFeed` function returned HTTP 200 with 66 events; and the `getPublicEvents` callable returned HTTP 200 with 66 events. The website-root `/ical` path returned HTML, not an iCalendar feed, so only the direct function result supports the iCal smoke evidence. These checks do not establish complete authenticated, booking, notification, poster, playback or recovery lifecycle acceptance.
+
+No user bookings, real mail, payments, uploads or live booking edits were performed during the reported release and smoke checks. Insights ingestion, form-catalog and cleanup activation remain outside the released scope; destructive poster cleanup and the historical conflict-flag repair are not reported as performed. Prior rollback source/configuration preservation must not be inferred from deployment success or from metadata references alone.
+
+**Current documentation status and next action:** only this authoritative handover was edited in the canonical checkout for this follow-up. It is saved locally, uncommitted and unpushed; user confirmation is required before committing or pushing this documentation update. Remaining acceptance and separately approved operational follow-ups must be tracked without replaying historical imports or inferring authorization for production writes.
+
+## Historical read-only release preflight — 7 November 2026
+
+The following preflight and provisional-plan records describe the state before the production release checkpoint above.
 
 The coordinating session reports a metadata-only preflight for project `project-7a4fb531-414f-4ade-88e`: inspected deployed functions are Gen 2 / Node.js 22 in `australia-southeast1`; `websiteCmsApi` runs as `178942309467-compute@developer.gserviceaccount.com` and currently has no secret environment bindings. No `youtubeFeedRefresh` matched the current function inventory. Policy Troubleshooter v3 returned HTTP 403 to the diagnostic caller for that runtime principal's access to `MWA_R2_ACCESS_KEY_ID`; effective access is **unknown**, not established denied. No secret values were accessed, IAM modified, archive downloaded, or provider operation performed.
 
