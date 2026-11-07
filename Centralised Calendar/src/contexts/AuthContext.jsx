@@ -14,7 +14,7 @@ const AuthContext = createContext(null);
 export const OWNER_EMAIL = 'admin@muhammadiwelfare.org.au';
 
 const DENIED_MESSAGES = {
-  'not-listed': 'This account is not on the MWA admin team list. Ask the account owner to add your email.',
+  'not-listed': 'This account is not on the MWA admin team list. Ask the Super Admin to add your email.',
   'unverified-email': 'This account’s email address is not verified. Use Sign in with Google instead.',
   'no-email': 'This account has no email address, so it cannot be checked against the admin list.',
   'password-disabled': 'Email/password sign-in has been turned off. Use Sign in with Google.'
@@ -22,6 +22,7 @@ const DENIED_MESSAGES = {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [isResponseViewer,setResponseViewer]=useState(false);
   const [teamState,setTeamState]=useState({email:'',entry:null});
   const [clock,setClock]=useState(Date.now());
   const [profile, setProfile] = useState(null); // users/{uid} doc, has .role
@@ -42,7 +43,7 @@ export function AuthProvider({ children }) {
     }
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       const signedOut = hadSession.current && !u;
-      setUser(u);setProfile(null);setLoading(!!u);
+      setUser(u);setResponseViewer(false);setProfile(null);setLoading(!!u);
       if(signedOut){hadSession.current=false;window.top.location.replace("/");}
       if (!u) {
         syncedUid.current = null;
@@ -61,15 +62,16 @@ export function AuthProvider({ children }) {
       () => setPasswordLoginDisabled(false));
   }, []);
 
-  async function runSync() {
-    setSyncing(true);
+  async function runSync(quiet=false) {
+    if(!quiet)setSyncing(true);
     try {
       const res = await syncAdminAccess();
-      if (res && res.admin === false) {
+      if(res?.viewer){setResponseViewer(true);setAuthError('');hadSession.current=true;}
+      else if (res && res.admin === false) {
         setAuthError(DENIED_MESSAGES[res.reason] || DENIED_MESSAGES['not-listed']);
         await signOut(auth);
       } else {
-        setAuthError('');
+        setResponseViewer(false);setAuthError('');
       }
     } catch {
       // If the check itself fails (e.g. offline), fall back to the stored role; rules still enforce it.
@@ -94,6 +96,7 @@ export function AuthProvider({ children }) {
     return unsub;
   }, [user]);
 
+  useEffect(()=>{if(!isResponseViewer)return;const timer=setInterval(()=>runSync(true),30000);return()=>clearInterval(timer);},[isResponseViewer,user?.uid]);
   const email=(user?.email||'').toLowerCase();
   useEffect(()=>{
     if(!user||!email)return;
@@ -162,7 +165,7 @@ export function AuthProvider({ children }) {
   };
 
   const cancelGoogleLink = () => setPendingLink(null);
-  const clearAdminWorkspace=()=>{setUser(null);setProfile(null);setTeamState({email:'',entry:null});setPendingLink(null);setLoading(false);};
+  const clearAdminWorkspace=()=>{setUser(null);setResponseViewer(false);setProfile(null);setTeamState({email:'',entry:null});setPendingLink(null);setLoading(false);};
   useEffect(()=>{
     const receiveSignOut=event=>{if(event.key!=='mwa-admin-signout'||!event.newValue)return;clearAdminWorkspace();signOut(auth).then(()=>window.top.location.replace('/')).catch(()=>window.top.location.replace('/'));};
     window.addEventListener('storage',receiveSignOut);
@@ -176,9 +179,10 @@ export function AuthProvider({ children }) {
     await signOut(auth);
     window.top.location.replace('/');
   };
-  const ownerIdentity=!!user?.emailVerified&&email===OWNER_EMAIL;
+  const ownerIdentity=!!user?.emailVerified&&email===OWNER_EMAIL&&profile?.email?.toLowerCase()===email;
   const provider=user?.providerData?.some(p=>p.providerId==='google.com')?'google.com':'password';
-  const isAdmin=profile?.role==='admin' && (ownerIdentity||!!teamEntry) && !(passwordLoginDisabled&&provider==='password');
+  const boundTeamIdentity=!!teamEntry&&teamEntry.uid===user?.uid&&profile?.email?.toLowerCase()===email;
+  const isAdmin=user?.emailVerified===true && profile?.role==='admin' && (ownerIdentity||boundTeamIdentity) && !(passwordLoginDisabled&&provider==='password');
   if(isAdmin)hadSession.current=true;
   const isOwner=isAdmin&&ownerIdentity;
   const accessExpired=!isOwner&&!accessActive(teamEntry);
@@ -187,7 +191,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, profile, isAdmin, isOwner, modules, canAccess, accessExpired, accessExpiryDate:teamEntry?.accessExpiryDate||null, loading: loading || syncing || (!!user&&teamState.email!==email), login, loginWithGoogle, logout, authError,
+      user, profile, isAdmin, isResponseViewer, isOwner, modules, canAccess, accessExpired, accessExpiryDate:teamEntry?.accessExpiryDate||null, loading: loading || syncing || (!!user&&teamState.email!==email), login, loginWithGoogle, logout, authError,
       passwordLoginDisabled, pendingLink, completeGoogleLink, cancelGoogleLink
     }}>
       {children}

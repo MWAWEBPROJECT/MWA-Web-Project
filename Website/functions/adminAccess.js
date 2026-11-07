@@ -31,17 +31,20 @@ function isValidEmail(value) {
  *  - previously list-managed admin no longer listed → revoke
  *  - everyone else                          → deny
  */
-function decideSignIn({ email, emailVerified, allowlisted, userDoc, provider, passwordLoginDisabled }) {
+function decideSignIn({ email, emailVerified, allowlisted, grantUid, uid, userDoc, provider, passwordLoginDisabled }) {
   const e = normalizeEmail(email);
   if (!e) return { action: 'deny', reason: 'no-email' };
   if (provider === 'password' && passwordLoginDisabled) return { action: 'deny', reason: 'password-disabled', email: e };
   const isAdminDoc = !!(userDoc && userDoc.role === 'admin');
   if (isOwner(e) && emailVerified) return { action: 'grant', email: e, owner: true };
-  // Anyone can self-register an email/password account with an unverified address, so an
-  // unverified email is only trusted when this uid is already an admin (set server-side/console).
-  if (!emailVerified && !isAdminDoc) return { action: 'deny', reason: 'unverified-email', email: e };
+  if (grantUid && grantUid !== uid) return { action: 'deny', reason: 'grant-identity-mismatch', email: e };
+  // An unverified legacy session is accepted only for its unchanged stored email and,
+  // when a grant already exists, that grant must already be bound to this UID.
+  const legacyIdentity = isAdminDoc && normalizeEmail(userDoc.email) === e
+    && (!allowlisted || grantUid === uid);
+  if (!emailVerified) return { action: 'deny', reason: 'unverified-email', email: e };
   if (allowlisted) return { action: 'grant', email: e };
-  if (isAdminDoc && !userDoc.allowlistManaged) return { action: 'migrate', email: e };
+  if (legacyIdentity && !userDoc.allowlistManaged) return { action: 'migrate', email: e };
   if (isAdminDoc) return { action: 'revoke', email: e };
   return { action: 'deny', reason: 'not-listed', email: e };
 }

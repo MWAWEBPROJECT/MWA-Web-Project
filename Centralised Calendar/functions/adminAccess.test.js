@@ -24,9 +24,11 @@ test('a self-registered unverified password account cannot claim a listed email'
   assert.equal(decideSignIn({ email: 'listed@x.org', emailVerified: false, allowlisted: true, userDoc: null }).action, 'deny');
 });
 
-test('existing password admins keep access unverified; console admins are migrated', () => {
-  assert.equal(decideSignIn({ email: 'a@x.org', emailVerified: false, allowlisted: false, userDoc: { role: 'admin' } }).action, 'migrate');
-  assert.equal(decideSignIn({ email: 'a@x.org', emailVerified: false, allowlisted: true, userDoc: { role: 'admin', allowlistManaged: true } }).action, 'grant');
+test('unverified legacy and changed identities are denied; verified grants remain UID-bound', () => {
+  assert.equal(decideSignIn({ email: 'a@x.org', emailVerified: false, allowlisted: false, userDoc: { role: 'admin', email: 'a@x.org' } }).action, 'deny');
+  assert.equal(decideSignIn({ email: 'a@x.org', emailVerified: false, allowlisted: true, grantUid: 'u', uid: 'u', userDoc: { role: 'admin', email: 'a@x.org', allowlistManaged: true } }).action, 'deny');
+  assert.equal(decideSignIn({ email: 'new@x.org', emailVerified: false, allowlisted: true, grantUid: 'u', uid: 'u', userDoc: { role: 'admin', email: 'a@x.org' } }).reason, 'unverified-email');
+  assert.equal(decideSignIn({ email: 'a@x.org', emailVerified: true, allowlisted: true, grantUid: 'other', uid: 'u', userDoc: { role: 'admin', email: 'a@x.org' } }).reason, 'grant-identity-mismatch');
   assert.equal(decideSignIn({ email: 'a@x.org', emailVerified: true, allowlisted: false, userDoc: { role: 'admin', allowlistManaged: true } }).action, 'revoke');
 });
 

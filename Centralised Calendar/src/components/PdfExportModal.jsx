@@ -1,3 +1,4 @@
+import {fetchPublicEvents} from '../services/eventsService.js';
 import {recordActivity} from '../services/auditService.js';
 import {bookingTypeStyle} from '@mwa/appearance';
 import { useMemo, useState } from 'react';
@@ -57,16 +58,23 @@ export default function PdfExportModal({ events, venues, departments, isAdmin, o
     if (!model) return;
     setBusy(true); setErr('');
     try {
+      let output=model;
+      if(!isAdmin){
+        const keys=(isYear?model.months.flatMap(m=>m.weeks.flat()):model.sheet.weeks.flat()).filter(Boolean).map(c=>c.key).sort();
+        if(!keys.length)throw Error('The selected calendar period is unavailable.');
+        const fresh=(await fetchPublicEvents({from:keys[0]+'T00:00:00+11:00',to:keys.at(-1)+'T23:59:59+10:00'})).filter(e=>!e.masked&&e.status==='confirmed'&&e.departmentId===publicDept?.id);
+        output=isYear?buildYearPdfModel({events:fresh,basis,year:gYear,hYear,overrides}):buildPdfModel({events:fresh,basis,year:gYear,month:gMonth,hYear,hMonth,overrides});
+      }
       if (isYear) {
         const { renderYearCalendarPdf, yearPdfFilename } = await import('../services/pdfYearCalendar.js');
-        await renderYearCalendarPdf(model, yearPdfFilename(model), {template,paperSize,departments});
+        await renderYearCalendarPdf(output, yearPdfFilename(output), {template,paperSize,departments});
         if(isAdmin)recordActivity('events-bookings','calendar.exported',`annual-${basis}-${template}-${paperSize}`);
         onClose();
         return;
       }
       const { renderCalendarPdf, pdfFilename } = await import('../services/pdfCalendar.js');
       const noteLines = isAdmin ? notes.split(/\r?\n/).map(s => s.replace(/^\s*\*\s*/, '').trim()).filter(Boolean) : [];
-      await renderCalendarPdf(model, pdfFilename(model), { template: isAdmin ? template : 'classic', notes: noteLines, paperSize,departments });
+      await renderCalendarPdf(output, pdfFilename(output), { template: isAdmin ? template : 'classic', notes: noteLines, paperSize,departments });
       if(isAdmin)recordActivity('events-bookings','calendar.exported',`monthly-${basis}-${template}-${paperSize}`);
       onClose();
     } catch (e) {

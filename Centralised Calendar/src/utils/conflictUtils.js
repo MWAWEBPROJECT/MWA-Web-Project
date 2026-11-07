@@ -28,13 +28,14 @@ export function pairConflicts(a, b) {
 export function computeAllConflicts(events, venues) {
   const vById = new Map(venues.map(v => [v.id, v]));
   const active = events
-    .filter(e => e.venueId && e.startAt && e.endAt && (e.status === 'pending' || e.status === 'confirmed'))
+    .filter(e => e.venueId && e.startAt && e.endAt && Number.isFinite(ms(e.startAt)) && Number.isFinite(ms(e.endAt)) && (e.status === 'pending' || e.status === 'confirmed'))
     .map(e => ({ id: e.id, venueId: e.venueId, startAt: e.startAt, endAt: e.endAt, _buf: resolveBufferHours(vById.get(e.venueId)), _whole: isWholeSiteVenue(vById.get(e.venueId)) }))
     .sort((x, y) => ms(x.startAt) - ms(y.startAt));
   const out = new Map(active.map(e => [e.id, []]));
   for (let i = 0; i < active.length; i += 1) {
     for (let j = i + 1; j < active.length; j += 1) {
       const a = active[i]; const b = active[j];
+      if (ms(b.startAt) >= ms(a.endAt) + Math.max(0, a._buf) * 3600000) break;
       if ((a.venueId === b.venueId || a._whole || b._whole) && pairConflicts(a, b)) {
         out.get(a.id).push(b.id); out.get(b.id).push(a.id);
       }

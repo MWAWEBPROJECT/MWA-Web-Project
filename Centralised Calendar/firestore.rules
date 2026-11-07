@@ -11,10 +11,11 @@ service cloud.firestore {
         || get(/databases/$(database)/documents/calendarSettings/auth).data.get('passwordLoginDisabled', false) != true;
     }
     function adminEmail(){return request.auth.token.email.lower();}
-    function owner(){return request.auth.token.email_verified == true && adminEmail() == 'admin@muhammadiwelfare.org.au';}
+    function sameUserEmail(){return userDoc().data.get('email', '').lower() == adminEmail();}
+    function owner(){return request.auth.token.email_verified == true && adminEmail() == 'admin@muhammadiwelfare.org.au' && sameUserEmail();}
     function teamEntry(){return get(/databases/$(database)/documents/adminAllowlist/$(adminEmail()));}
     function accessActive(){return teamEntry().data.get('accessExpiresAt', null) == null || request.time < teamEntry().data.accessExpiresAt;}
-    function isAdmin(){return signedIn() && userDoc().data.role == 'admin' && passwordSessionAllowed() && (owner() || (exists(/databases/$(database)/documents/adminAllowlist/$(adminEmail())) && accessActive()));}
+    function isAdmin(){return signedIn() && request.auth.token.email_verified == true && userDoc().data.role == 'admin' && sameUserEmail() && passwordSessionAllowed() && (owner() || (exists(/databases/$(database)/documents/adminAllowlist/$(adminEmail())) && teamEntry().data.get('uid', '') == request.auth.uid && accessActive()));}
     function hasModule(moduleId){return isAdmin() && (owner() || moduleId in teamEntry().data.get('modules', ["events-bookings", "enquiries", "calendar-management", "niaz", "volunteers", "members", "tools-automation", "maintenance", "expenses", "donations", "social-media", "speakers-reciters", "website-cms"]));}
 
     // ── Users ────────────────────────────────────────────────────────────────
@@ -82,6 +83,16 @@ service cloud.firestore {
     match /registrationForms/{path=**} { allow read, write: if false; }
     match /registrationListings/{path=**} { allow read, write: if false; }
     match /_registrationRateLimits/{path=**} { allow read, write: if false; }
+    match /_registrationPosterCleanup/{path=**} { allow read, write: if false; }
+    match /_hijriRecoveryRuns/{path=**} { allow read, write: if false; }
+    match /_hijriNotificationReview/{path=**} { allow read, write: if false; }
+    match /_insightsDetailGrants/{path=**} { allow read, write: if false; }
+    match /_insightsDetailJobs/{path=**} { allow read, write: if false; }
+    match /_insightsMultiJobs/{path=**} { allow read, write: if false; }
+    match /_respondents/{path=**} { allow read, write: if false; }
+    match /_respondentLinks/{path=**} { allow read, write: if false; }
+    match /_respondentContacts/{path=**} { allow read, write: if false; }
+    match /_respondentMerges/{path=**} { allow read, write: if false; }
 
     // ── Audit log ────────────────────────────────────────────────────────────
     // Admin-only, and only ever written by Cloud Functions (Admin SDK).

@@ -17,14 +17,15 @@ export const adminModules=[
  {name:'Social Media Administration',icon:Megaphone,description:'Coordinate community communications and updates.'},
  {name:'Speakers & Reciters',icon:MicVocal,description:'Coordinate speakers, reciters and programme participation.'},
  {name:'Website CMS',icon:PanelsTopLeft,description:'Publish website content, branding and appearance.',href:'/cms'},
- {name:'Form Builder',icon:ClipboardList,description:'Build community forms, link calendar events and review responses.',href:'/admin-login?module=form-builder'}
+ {name:'Form Builder',icon:ClipboardList,description:'Build community forms, link calendar events and review responses.',href:'/admin-login?module=form-builder'},
+ {name:'Form Insights',icon:ClipboardList,description:'Explore indexed registration counts and historical trends.',href:'/admin-login?module=form-insights'}
 ];
 
 export default function AdminConsole({email}){
  const {canAccess,accessExpired,accessExpiryDate}=useAuth();
  return <section className="admin-console" aria-labelledby="admin-console-title">
   <div className="admin-console-intro"><div className="eyebrow">MWA · ADMINISTRATION</div><h1 id="admin-console-title">Welcome to Admin Console.</h1><p>Manage MWA’s services and website from one place.</p><span className="admin-console-account">Signed in as {email}</span></div>
-  {accessExpired?<p role="status">Your admin module access has expired. Contact the account owner to renew it.</p>:accessExpiryDate&&<p>Access expires at the end of {accessExpiryDate} (Sydney time).</p>}
+  {accessExpired?<p role="status">Your admin module access has expired. Contact the Super Admin to renew it.</p>:accessExpiryDate&&<p>Access expires at the end of {accessExpiryDate} (Sydney time).</p>}
   <div className="admin-module-grid">{adminModules.map(({name,icon:Icon,description,href},index)=>{
    const allowed=canAccess(ADMIN_MODULES[index].id);const live=!!href;
    if(!allowed)href=null;
@@ -33,6 +34,6 @@ export default function AdminConsole({email}){
     <div className="admin-module-top"><span className="admin-module-icon"><Icon aria-hidden="true"/></span><span className="admin-module-status">{!allowed?'Access not assigned':live?'Live':'Coming soon'}</span></div>
     <h2>{name}{href&&<ArrowUpRight aria-hidden="true"/>}</h2><p>{description}</p>
    </Tag>;
-  })}</div>
+   })}</div>{canAccess('form-insights-people')&&<p><a href="/admin-login?module=insights-people">Respondent review</a></p>}<p><a href="/admin-login?module=insights-detail">Scoped response-detail export</a> (requires a separate assignment)</p>
  </section>;
 }

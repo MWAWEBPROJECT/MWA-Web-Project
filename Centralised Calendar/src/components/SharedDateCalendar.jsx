@@ -6,7 +6,7 @@ import {getHijriParts,HIJRI_MONTHS} from '../services/hijriService.js';
 import {dateKeyInOrgTz,timeKeyInOrgTz} from '../utils/dateUtils.js';
 import {publicProgrammes} from '../utils/communityCalendar.js';
 
-export default function SharedDateCalendar({overrides=[],events=[],reference=false,loading=false,error=''}) {
+export default function SharedDateCalendar({overrides=[],events=[],reference=false,loading=false,error='',onRangeChange}) {
   const today=dateKeyInOrgTz(new Date().toISOString());
   const current=()=>{const [year,month]=dateKeyInOrgTz(new Date().toISOString()).split('-').map(Number);return {year,month:month-1};};
   const [basis,setBasis]=useState('gregorian');
@@ -14,6 +14,8 @@ export default function SharedDateCalendar({overrides=[],events=[],reference=fal
   const [h,setH]=useState(()=>gregorianCursorToHijri(g.year,g.month,overrides));
   const [selected,setSelected]=useState(null);
   const grid=useMemo(()=>basis==='gregorian'?buildGregorianMonthGrid(g.year,g.month,overrides):buildHijriMonthGrid(h.hYear,h.hMonth,overrides),[basis,g,h,overrides]);
+  const firstKey=grid.cells[0]?.key,lastKey=grid.cells.at(-1)?.key;
+  useEffect(()=>{if(onRangeChange&&firstKey&&lastKey)onRangeChange({from:firstKey+'T00:00:00+11:00',to:lastKey+'T23:59:59+10:00'});},[firstKey,lastKey,onRangeChange]);
   const programmes=useMemo(()=>reference?[]:publicProgrammes(events),[reference,events]);
   const inMonth=new Set(grid.cells.filter(c=>c.inMonth).map(c=>c.key));
   const shown=programmes.filter(e=>selected?dateKeyInOrgTz(e.startAt)===selected:inMonth.has(dateKeyInOrgTz(e.startAt)));

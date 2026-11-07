@@ -45,6 +45,37 @@ function text(value, max, required=false) {
   if(typeof value!=='string'||value.length>max||(required&&!value.trim()))throw Error('Check the question labels, help text and options.');
   return value.trim();
 }
+export function cleanIntroductionRuns(runs) {
+  if(!Array.isArray(runs)||runs.length>200)throw Error('Keep the introduction to no more than 200 text sections.');
+  const result=[];let length=0;
+  for(const run of runs){
+    if(!run||typeof run!=='object'||Array.isArray(run)||typeof run.text!=='string'||typeof run.bold!=='boolean'||Object.keys(run).some(key=>key!=='text'&&key!=='bold'))throw Error('Check the introduction formatting.');
+    length+=run.text.length;
+    if(length>2000)throw Error('Keep the introduction to 2,000 characters or fewer.');
+    if(!run.text)continue;
+    const previous=result.at(-1);
+    if(previous&&previous.bold===run.bold)previous.text+=run.text;
+    else result.push({text:run.text,bold:run.bold});
+  }
+  const plain=result.map(run=>run.text).join(''),trimmed=plain.trim();
+  if(plain!==trimmed){
+    const start=plain.length-plain.trimStart().length,end=plain.trimEnd().length;
+    let offset=0;
+    return result.map(run=>{
+      const from=Math.max(0,start-offset),to=Math.max(0,Math.min(run.text.length,end-offset));
+      offset+=run.text.length;
+      return {text:run.text.slice(from,to),bold:run.bold};
+    }).filter(run=>run.text);
+  }
+  return result;
+}
+export function cleanIntroduction(description, runs) {
+  const plain=text(description??'',2000);
+  if(runs===undefined)return {description:plain,descriptionRuns:plain?[{text:plain,bold:false}]:[]};
+  const descriptionRuns=cleanIntroductionRuns(runs),formatted=descriptionRuns.map(run=>run.text).join('');
+  if(plain!==formatted)throw Error('The introduction text and formatting do not match.');
+  return {description:formatted,descriptionRuns};
+}
 export function cleanFields(fields) {
   if(!Array.isArray(fields)||!fields.length||fields.length>30)throw Error('Add between 1 and 30 questions.');
   const ids=new Set();

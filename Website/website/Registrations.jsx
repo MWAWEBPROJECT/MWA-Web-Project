@@ -2,6 +2,8 @@ import React,{useEffect,useRef,useState} from 'react';
 import {registrationApi,expiryLabel,isFormOpen} from './registration-client.js';
 import {validateAnswers} from '../functions/registration-model.mjs';
 import RegistrationFields from './RegistrationFields.jsx';
+import {RegistrationIntroduction} from './RegistrationIntroduction.jsx';
+import RegistrationPoster from './RegistrationPoster.jsx';
 import './registrations.css';
 
 export function RegistrationList({panel=false}){
@@ -27,7 +29,7 @@ export function RegistrationList({panel=false}){
  return <div className={'registration-list'+(panel?' is-panel':'')}>
  {error&&<p role="alert">{error} <button type="button" className="btn alt small" disabled={busy} onClick={()=>load()}>Retry</button></p>}
  {!busy&&!error&&!visible.length&&<p>No registrations are open at the moment.</p>}
- {visible.map(form=><a key={form.id} className="registration-list-item" href={'/registrations/?form='+form.id}><strong>{form.title}</strong>{form.description&&<span>{form.description}</span>}<small>Closes {expiryLabel(form.expiryDate)} (Sydney)</small><b>Open form &rarr;</b></a>)}
+ {visible.map(form=><a key={form.id} className="registration-list-item" href={'/registrations/?form='+form.id}><strong>{form.title}</strong><RegistrationIntroduction description={form.description} descriptionRuns={form.descriptionRuns} className="registration-introduction-content" as="span"/><small>Closes {expiryLabel(form.expiryDate)} (Sydney)</small><b>Open form &rarr;</b></a>)}
  {busy&&<p role="status">Loading registrations...</p>}
  {next&&<button type="button" className="btn alt small" disabled={busy} onClick={()=>load(next)}>Load more forms</button>}
  </div>;
@@ -56,12 +58,13 @@ export default function Registrations(){
   finally{setBusy(false);}
  }
  const ConfirmationHeading=shared?'h1':'h2';
- return <section className="registrations-page wrap">{(!shared||!reference)&&<><div className="eyebrow">{shared?'MUHAMMADI WELFARE ASSOCIATION':'MWA COMMUNITY'}</div><h1>{form?.title||'Registrations'}</h1></>}
+ const logo=typeof document!=='undefined'?document.querySelector('img.official-logo')?.getAttribute('src'):'';
+ return <section className="registrations-page wrap">{(!shared||!reference)&&<><div className="registration-brand">{logo&&<img className="registration-logo" data-cms-image="logo" src={logo} alt="Muhammadi Welfare Association logo"/>}<div className="eyebrow">{shared?'MUHAMMADI WELFARE ASSOCIATION':'MWA COMMUNITY'}</div></div><h1>{form?.title||'Registrations'}</h1></>}
  {!shared&&<p><a className="text-link" href={id?'/registrations/':'/#today-panels'}>{id?'All registrations':'Back to Home'}</a></p>}
  {!id?<RegistrationList/>:<>
  {loading&&<p role="status">Loading form...</p>}{error&&<p role="alert">{error}</p>}
  {reference?<div role="status" className="registration-card"><ConfirmationHeading>Thank you.</ConfirmationHeading><p>We have received your response. Your reference number is <strong>{reference}</strong>.</p></div>
- :form&&<><p className="registration-introduction">{form.description}</p><p>Closes at the end of {expiryLabel(form.expiryDate)} (Sydney time).</p>
+ :form&&<><RegistrationPoster form={form}/><RegistrationIntroduction description={form.description} descriptionRuns={form.descriptionRuns} className="registration-introduction" as="p"/><p>Closes at the end of {expiryLabel(form.expiryDate)} (Sydney time).</p>
  {form.event&&<p>Linked event: {shared?form.event.title:<a className="text-link" href={'/calendar/?date='+new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(form.event.startAt))}>{form.event.title}</a>}</p>}
  <p className="registration-purpose">{form.purpose}</p><p>Responses are private to authorised MWA Form Builder administrators. No sign-in is required.</p>
  {!isFormOpen(form,time)?<p role="status">This form has expired and no longer accepts responses.</p>

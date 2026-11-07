@@ -109,8 +109,10 @@ export default function BookingsPage({ events: rawEvents, venues, departments, i
       setMsg(`Import complete: ${res.created} created, ${res.updated} updated, ${res.skipped} skipped. Overlaps are flagged, not blocked.`);
       setReport(null);
       onSaved && onSaved();
-    } catch (err) {
-      setMsg(err?.message || 'Import failed.');
+    } catch {
+      setReport(null);
+      setMsg('Import could not be confirmed. Some or all bookings may already have been saved. Check Bookings before importing this file again.');
+      onSaved && onSaved();
     } finally { setBusy(false); }
   }
 

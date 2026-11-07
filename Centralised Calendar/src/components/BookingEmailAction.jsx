@@ -22,7 +22,7 @@ export default function BookingEmailAction(){
  if(!valid)return null;
  const returnTo='/calendar/?booking='+encodeURIComponent(id)+'&decision='+requested;
  if(session.loading)return <section className="page-panel glass-panel email-decision"><p>Checking your admin session…</p></section>;
- if(!allowed)return <section className="page-panel glass-panel email-decision"><h2>Review booking request</h2><p>{session.isAdmin?'Events & Bookings access is not assigned or has expired. Contact the account owner.':'Sign in with your approved Events & Bookings admin account to review this request.'}</p><a className="lb lb-default" href={session.isAdmin?'/admin-login':'/admin-login?returnTo='+encodeURIComponent(returnTo)} target="_top">{session.isAdmin?'Admin Console':'Admin sign in'}</a></section>;
+ if(!allowed)return <section className="page-panel glass-panel email-decision"><h2>Review booking request</h2><p>{session.isAdmin?'Events & Bookings access is not assigned or has expired. Contact the Super Admin.':'Sign in with your approved Events & Bookings admin account to review this request.'}</p><a className="lb lb-default" href={session.isAdmin?'/admin-login':'/admin-login?returnTo='+encodeURIComponent(returnTo)} target="_top">{session.isAdmin?'Admin Console':'Admin sign in'}</a></section>;
  if(loading)return <section className="page-panel glass-panel email-decision"><p>Loading booking request…</p></section>;
  if(!booking)return <section className="page-panel glass-panel email-decision"><h2>Booking unavailable</h2><p>{error||'This booking no longer exists.'}</p></section>;
  const fmt=value=>new Date(value).toLocaleString('en-AU',{timeZone:'Australia/Sydney',dateStyle:'medium',timeStyle:'short'});

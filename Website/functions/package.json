@@ -1,1 +1,1 @@
-{"name":"mwa-website-functions","private":true,"main":"index.js","engines":{"node":"22"},"dependencies":{"firebase-admin":"^12.1.0","firebase-functions":"^5.0.0","stripe":"23.1.0"},"scripts":{"test":"node --test","check":"node --check index.js"}}
+{"name":"mwa-website-functions","private":true,"main":"index.js","engines":{"node":"22"},"dependencies":{"@aws-sdk/client-s3":"^3.1000.0","firebase-admin":"^12.1.0","firebase-functions":"^5.0.0","sharp":"^0.34.0","stripe":"23.1.0"},"scripts":{"test":"node --test","check":"node --check index.js"}}

@@ -224,7 +224,13 @@ function icsAttachment(e, id) {
   return { filename: 'booking.ics', content, contentType: 'text/calendar; charset=utf-8; method=PUBLISH' };
 }
 
+function verificationCode(to,code){
+  if(!/^\d{6}$/.test(code))throw new Error('Invalid verification code.');
+  return mail(to,'Your MWA Booking Verification Code',render({heading:'Booking Verification',intro:'Verify your contact before entering your booking details.',rows:[['Verification code',code]],extra:['This code expires in 10 minutes. Enter it only on the MWA website.','This does not submit or approve a booking. If you did not request this code, ignore this email.']}));
+}
+
 module.exports = {
+  verificationCode,
   ADMIN_TO, ADMIN_CC, REPLY_TO, SITE_URL, adminRecipients,
   submissionRequester, submissionAdmin, decisionRequester, cancellationAdmin,
   scheduleChanged, updateRequester, deletionRequester, seriesCreatedRequester,

@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {getHijriSettings,saveMonthOverride,removeMonthOverride} from '../services/calendarSettingsService.js';
 import {HIJRI_MONTHS,getTodayHijriParts} from '../services/hijriService.js';
+import HijriRecoveryStatus from './HijriRecoveryStatus.jsx';
 export default function HijriTab({ adjustedBy, hijriOverrides, onReloadSettings }) {
   const blankForm = () => { const h = getTodayHijriParts(hijriOverrides); return { hYear: h.year ? String(h.year) : '', hMonth: h.month ? String(h.month) : '1', gDate: '' }; };
   const [settings, setSettings] = useState({ overrides: hijriOverrides });
@@ -37,6 +38,7 @@ export default function HijriTab({ adjustedBy, hijriOverrides, onReloadSettings 
         (until a later override takes effect) and is used consistently across the public calendar,
         bookings list, website, all modules and iCal export. Changes can move Hijri-based bookings to their adjusted Gregorian date.
       </p>
+      <HijriRecoveryStatus/>
       <form className="card" onSubmit={add} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div><label>Hijri year</label><input type="number" value={form.hYear} onChange={e => setForm(f => ({ ...f, hYear: e.target.value }))} /></div>
         <div>

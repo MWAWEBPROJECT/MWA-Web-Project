@@ -2,7 +2,7 @@ import {bookingTypeStyle,bookingTypeEdge} from '@mwa/appearance';
 import { withLiveConflicts } from '../utils/conflictUtils.js';
 import { useEffect, useMemo, useState } from 'react';
 import { HIJRI_MONTHS } from '../services/hijriService.js';
-import { dateKeyInOrgTz, timeKeyInOrgTz } from '../utils/dateUtils.js';
+import { dateKeyInOrgTz, timeKeyInOrgTz, localToUtcIso } from '../utils/dateUtils.js';
 import {
   DOW,
   buildGregorianMonthGrid,
@@ -29,7 +29,7 @@ const G_ABBR_FULL = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 const H_ABBR = { 1: 'Muh', 2: 'Saf', 3: 'Rab I', 4: 'Rab II', 5: 'Jum I', 6: 'Jum II', 7: 'Raj', 8: 'Sha', 9: 'Ram', 10: 'Shaw', 11: 'DhQ', 12: 'DhH' };
 const G_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-export default function CalendarPage({ events: rawEvents, venues, departments, isAdmin, hijriOverrides, onSaved }) {
+export default function CalendarPage({ events: rawEvents, venues, departments, isAdmin, hijriOverrides, onSaved, onPublicRangeChange }) {
   const events = useMemo(() => withLiveConflicts(rawEvents, venues, isAdmin), [rawEvents, venues, isAdmin]);
   // Which calendar drives month navigation / in-cell day numbering. Weekday
   // columns/labels are identical regardless of this choice.
@@ -99,6 +99,17 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
 
   const monthKeys = useMemo(() => new Set(grid.cells.filter(c => c.inMonth).map(c => c.key)), [grid]);
   const monthEvents = useMemo(() => shown.filter(e => monthKeys.has(dateKeyInOrgTz(e.startAt))), [shown, monthKeys]);
+  const publicRange = useMemo(() => {
+    const startKey = view === 'day' ? selectedKey : view === 'week' ? mondayOf(selectedKey) : grid.cells[0]?.key;
+    if (!startKey) return null;
+    const from = localToUtcIso(startKey, '00:00');
+    const to = localToUtcIso(addDaysKey(startKey, 365), '00:00');
+    return from && to ? { from, to } : null;
+  }, [view, selectedKey, grid]);
+
+  useEffect(() => {
+    if (publicRange) onPublicRangeChange?.(publicRange);
+  }, [onPublicRangeChange, publicRange]);
 
   function toggleDept(id) {
     setDeptFilter(prev => {

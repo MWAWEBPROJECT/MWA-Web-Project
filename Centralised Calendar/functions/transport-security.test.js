@@ -1,0 +1,12 @@
+const test=require('node:test'),assert=require('node:assert/strict'),net=require('node:net');
+const {transportOptions}=require('./mailer');
+test('SMTP requires certificate validation and refuses authentication without STARTTLS',async()=>{
+ assert.equal(transportOptions('smtp',465,'user','pass').secure,true);assert.throws(()=>transportOptions('smtp',25,'user','pass'));
+ const commands=[],sockets=new Set();const server=net.createServer(socket=>{sockets.add(socket);socket.write('220 fixture ESMTP\r\n');socket.on('data',data=>{for(const line of data.toString().split('\r\n').filter(Boolean)){commands.push(line);if(line.startsWith('EHLO'))socket.write('250-fixture\r\n250 AUTH LOGIN PLAIN\r\n');else if(line==='STARTTLS')socket.write('454 TLS unavailable\r\n');else socket.write('500 No\r\n');}});socket.on('close',()=>sockets.delete(socket));});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const options=transportOptions('127.0.0.1',587,'fixture-user','fixture-pass');assert.equal(options.tls.rejectUnauthorized,true);
+ const transport=require('nodemailer').createTransport({...options,port:server.address().port,connectionTimeout:3000,socketTimeout:3000});
+ try{await assert.rejects(transport.verify());assert.ok(commands.includes('STARTTLS'));assert.equal(commands.some(c=>c.startsWith('AUTH')),false);}finally{transport.close();for(const socket of sockets)socket.destroy();await new Promise(resolve=>server.close(resolve));}
+});
+test('HTTP parser rejects compressed and oversized payloads before the handler',async()=>{const app=require('express')();let calls=0;app.use(require('./apiBody').jsonBody);app.post('/',(req,res)=>{calls++;res.json({ok:true});});app.use((err,req,res,next)=>res.status(err.status||500).end());const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));const url='http://127.0.0.1:'+server.address().port;
+ try{assert.equal((await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Content-Encoding':'gzip'},body:require('node:zlib').gzipSync('{}')})).status,415);assert.equal((await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({large:'x'.repeat(103000)})})).status,413);assert.equal((await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{'})).status,400);assert.equal(calls,0);}finally{await new Promise(resolve=>server.close(resolve));}
+});

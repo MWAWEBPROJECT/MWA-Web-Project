@@ -1,3 +1,4 @@
+import './YouTubePanel.jsx';
 import {normaliseTextSize,applyTextSize} from '../shared/text-size.js';
 import {mountCommunityCalendar} from './community-calendar.jsx';
 import {recordActivity} from '@calendar/services/auditService.js';
@@ -13,6 +14,9 @@ import AdminConsole from './AdminConsole.jsx';
 import DonationsAdmin from './DonationsAdmin.jsx';
 import EnquiriesPage from './EnquiriesPage.jsx';
 import FormBuilder from './FormBuilder.jsx';
+import FormInsights from './FormInsights.jsx';
+import InsightsDetail from './InsightsDetail.jsx';
+import InsightsPeople from './InsightsPeople.jsx';
 import Registrations,{RegistrationList} from './Registrations.jsx';
 import './contact-form.js';
 import {schemes,defaults,applyAppearance,normaliseSettings} from '../shared/appearance.js';
@@ -33,7 +37,7 @@ onSnapshot(doc(db,'calendarSettings','websiteAppearance'),snapshot=>{if(snapshot
 const refreshAppearance=()=>applyAppearance(siteSettings);
 window.addEventListener('storage',refreshAppearance);window.addEventListener('mwa-appearance-preferences',refreshAppearance);matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refreshAppearance);
 
-function AdminLogin(){const session=useAuth();useEffect(()=>{window.mwaPageReady?.()},[]);const requestedReturn=new URLSearchParams(location.search).get('returnTo');const bookingReturn=/^\/calendar\/\?booking=[a-zA-Z0-9_-]{1,128}&decision=(approve|reject)$/.test(requestedReturn||'');const returnTo=bookingReturn||['/cms','/calendar-management/','/tools-automation/'].includes(requestedReturn)||/^\/enquiries\/(?:\?(?:thread=[a-f0-9]{32}|mailbox=setup))?$/.test(requestedReturn||'')?requestedReturn:null;const returnToCms=!!returnTo;useEffect(()=>{if(!session.loading&&session.isAdmin&&returnToCms)location.replace(returnTo)},[session.loading,session.isAdmin,returnTo]);if(!session.loading&&session.isAdmin&&returnToCms)return <div className="admin-welcome"><p>Opening your workspace…</p></div>;if(session.loading)return <div className="admin-welcome"><p>Checking your admin session…</p></div>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='donations')return <DonationsAdmin/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='form-builder')return <FormBuilder/>;if(session.isAdmin)return <AdminConsole email={session.user?.email}/>;return <div className="mwa-admin-auth"><div className="admin-auth-intro"><div className="eyebrow">ONE MWA · ONE ADMIN ACCOUNT</div><h1>Admin login.</h1><p>Use your existing MWA calendar admin account. After signing in, open the calendar workspace or manage website content.</p></div><AdminLoginCard {...session}/></div>}
+function AdminLogin(){const session=useAuth();useEffect(()=>{window.mwaPageReady?.()},[]);const requestedReturn=new URLSearchParams(location.search).get('returnTo');const bookingReturn=/^\/calendar\/\?booking=[a-zA-Z0-9_-]{1,128}&decision=(approve|reject)$/.test(requestedReturn||'');const returnTo=bookingReturn||['/cms','/calendar-management/','/tools-automation/'].includes(requestedReturn)||/^\/enquiries\/(?:\?(?:thread=[a-f0-9]{32}|mailbox=setup))?$/.test(requestedReturn||'')?requestedReturn:null;const returnToCms=!!returnTo;useEffect(()=>{if(!session.loading&&session.isAdmin&&returnToCms)location.replace(returnTo)},[session.loading,session.isAdmin,returnTo]);if(!session.loading&&session.isAdmin&&returnToCms)return <div className="admin-welcome"><p>Opening your workspace…</p></div>;if(session.loading)return <div className="admin-welcome"><p>Checking your admin session…</p></div>;if(session.isResponseViewer)return <FormBuilder/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='insights-detail')return <InsightsDetail/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='insights-people')return <InsightsPeople/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='form-insights')return <FormInsights/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='donations')return <DonationsAdmin/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='form-builder')return <FormBuilder/>;if(session.isAdmin)return <AdminConsole email={session.user?.email}/>;return <div className="mwa-admin-auth"><div className="admin-auth-intro"><div className="eyebrow">ONE MWA · ONE ADMIN ACCOUNT</div><h1>Admin login.</h1><p>Use your existing MWA calendar admin account. After signing in, open the calendar workspace or manage website content.</p></div><AdminLoginCard {...session}/></div>}
 if(location.pathname.replace(/\/$/,'')==='/admin-login'){
  document.querySelector('#main').hidden=true;document.querySelector('.skip')?.setAttribute('href','#admin-main');document.querySelector('#admin-main').hidden=false;
 
@@ -66,7 +70,3 @@ mountCommunityCalendar();
 window.addEventListener('mwa-appearance-preferences',()=>{if(window.mwaAdminSession?.isAdmin)recordActivity('website','appearance.changed',document.documentElement.dataset.palette+' / '+document.documentElement.dataset.mode);});
 
 // One server-managed visibility list applies to all visitors and survives refreshes.
-let hiddenSocialIds=new Set();
-async function applySocialVisibility(){for(const link of document.querySelectorAll('.social-update[data-cms-link]')){try{const url=new URL(link.href);for(const key of [...url.searchParams.keys()])if(/^utm_/i.test(key)||['fbclid','igsh','igshid','si','_r','_t'].includes(key))url.searchParams.delete(key);url.searchParams.sort();url.hash='';url.pathname=url.pathname.replace(/\/$/,'');const bytes=new TextEncoder().encode(url.href.replace(/\/$/,''));const key=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');link.hidden=hiddenSocialIds.has(key);}catch{link.hidden=false;}}}
-onSnapshot(doc(db,'calendarSettings','socialModeration'),snapshot=>{hiddenSocialIds=new Set(snapshot.exists()?snapshot.data().hiddenPostIds||[]:[]);applySocialVisibility()},()=>{});
-window.addEventListener('mwa-content-rendered',applySocialVisibility);

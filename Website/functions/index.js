@@ -3,6 +3,7 @@ const {initializeApp}=require('firebase-admin/app');
 const {getFirestore}=require('firebase-admin/firestore');
 const {getAuth}=require('firebase-admin/auth');
 const {onRequest}=require('firebase-functions/v2/https');
+const {defineSecret}=require('firebase-functions/params');
 const {validateContent}=require('./validateContent');
 const model=require('./content-model.json');
 const {sessionAllowed}=require('./adminAccess');
@@ -11,11 +12,15 @@ initializeApp();const db=getFirestore();
 const origins=new Set(['https://refreshed.muhammadiwelfare.org.au','https://mwa-community-web.web.app','https://mwa-community-web.firebaseapp.com','http://127.0.0.1:5174','http://localhost:5174']);
 async function editorFor(req,moduleId='website-cms'){try{const match=/^Bearer (.+)$/.exec(req.get('Authorization')||'');if(!match)return null;const token=await getAuth().verifyIdToken(match[1],true);return await resolveAdmin(db,token.uid,token,moduleId)}catch{return null}}
 
-exports.websiteCmsApi=onRequest({region:'australia-southeast1',maxInstances:3},async(req,res)=>{
+const posterAccessKey=defineSecret('MWA_R2_ACCESS_KEY_ID'),posterSecretKey=defineSecret('MWA_R2_SECRET_ACCESS_KEY');
+exports.websiteCmsApi=onRequest({region:'australia-southeast1',maxInstances:3,secrets:[posterAccessKey,posterSecretKey]},async(req,res)=>{
  res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');
  const origin=req.get('Origin');if(origin&&origins.has(origin)){res.set('Access-Control-Allow-Origin',origin);res.set('Vary','Origin');res.set('Access-Control-Allow-Headers','Authorization, Content-Type');res.set('Access-Control-Allow-Methods','GET, PUT, POST, PATCH, OPTIONS')}
  if(req.method==='OPTIONS')return res.status(origin&&origins.has(origin)?204:403).end();
  try{
+  if(/^\/api\/form-insights(?:\/|$)/.test(req.path))return require('./form-insights').handle(req,res,{db,getAuth,origins});
+  if(/^\/api\/insights-detail(?:\/|$)/.test(req.path))return require('./insights-detail-api').handle(req,res,{db,getAuth,origins});
+  if(req.path==='/api/youtube-feed'&&req.method==='GET')return require('./youtube-feed').serve(db,res);
   if(/^\/api\/registrations(?:\/|$)/.test(req.path))return require('./registrations-api').handle(req,res,{db,getAuth,origins});
   if(/^\/api\/enquiries(?:\/|$)/.test(req.path))return require('./enquiries-api').handle(req,res,{db,getAuth,origins});
   const socialRoute=req.path.replace(/\/$/,'').endsWith('/social-moderation');
@@ -49,6 +54,22 @@ transaction.set(db.collection('auditLog').doc(),{module:'website-cms',entityType
 
 exports.enquiriesMailWorker=require('firebase-functions/v2/scheduler').onSchedule({schedule:'every 2 minutes',region:'australia-southeast1',timeoutSeconds:240,maxInstances:1},()=>require('./enquiries-gmail').run(db));
 
+exports.insightsMultiSnapshotCleanup=require('firebase-functions/v2/scheduler').onSchedule({schedule:'every 15 minutes',region:'australia-southeast1',timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:3},()=>require('./insights-multi-cleanup').run(db,{enabled:process.env.MWA_INSIGHTS_MULTI_CLEANUP_ENABLED==='true'}));
+
 exports.stripeSandboxWebhook=require('./stripe-sandbox').stripeSandboxWebhook;
 
 Object.assign(exports,require('./donations-runtime'));
+
+const youtubeKey=require('firebase-functions/params').defineSecret('YOUTUBE_DATA_API_KEY');
+exports.youtubeFeedRefresh=require('firebase-functions/v2/scheduler').onSchedule({schedule:'every 15 minutes',region:'australia-southeast1',timeoutSeconds:240,maxInstances:1,secrets:[youtubeKey]},()=>require('./youtube-feed').refresh(db,youtubeKey.value()));
+
+const firestore=require('firebase-functions/v2/firestore');
+exports.registrationInsightsIndex=firestore.onDocumentWritten({document:'registrationForms/{formId}/responses/{responseId}',region:'australia-southeast1',retry:true},async event=>{
+ const insights=require('./form-insights'),state=require('./insights-state');
+ await state.recordSourceChange(db,event.params.formId);
+ if((await db.doc('_insightsState/config').get()).data()?.enabled===true)await insights.indexResponse(db,event.params.formId,event.params.responseId);
+});
+exports.registrationInsightsFormCatalog=firestore.onDocumentWritten({document:'registrationForms/{formId}',region:'australia-southeast1',retry:true},async event=>{
+ if(event.data.before.exists===event.data.after.exists)return;
+ await require('./insights-state').recordFormCatalogChange(db);
+});

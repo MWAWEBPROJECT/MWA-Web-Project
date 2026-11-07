@@ -1,20 +1,24 @@
 const {resolveAdmin}=require('./moduleAccess');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, FieldPath, FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
+const { getAppCheck } = require('firebase-admin/app-check');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
+const { defineSecret } = require('firebase-functions/params');
 const logger = require('firebase-functions/logger');
 const express = require('express');
 const cors = require('cors');
+const { jsonBody } = require('./apiBody');
+const { commitInChunks: commitBatches } = require('./batchWrites');
 
 const { adjustedGregorianToIslamic, HIJRI_MONTHS } = require('./hijriService');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { sendAll, emailSecrets } = require('./mailer');
+const { sendAll, sendMail, emailSecrets } = require('./mailer');
 const notify = require('./notifications');
-const { resolveBufferHours, rangesOverlap, rangesConflict, computeAllConflicts, isWholeSiteVenue } = require('./conflictUtils');
-const { validateImportRows, MAX_IMPORT_ROWS } = require('./bookingImport');
+const { resolveBufferHours, rangesConflict, computeAllConflicts, isWholeSiteVenue } = require('./conflictUtils');
+const { validateImportRows, importIds, MAX_IMPORT_ROWS, completeImport } = require('./bookingImport');
 const { MIN_PUBLIC_LEAD_HOURS, validateBookingLeadTime } = require('./publicLeadTime');
 const { canSubmitBookingType } = require('./bookingTypePolicy');
 const { buildConflictResponse } = require('./conflictResponse');
@@ -26,15 +30,56 @@ const { toOrgTimeParts } = require('./dateUtils');
 const { sanitizePrayer, resolvePrayerInstants } = require('./prayerTimes');
 const { sanitizeProgramExtras, expensesTotal } = require('./programExtras');
 const { OWNER_EMAIL, normalizeEmail, isValidEmail, decideSignIn, checkRemoval, checkAddition, sessionAllowed, shouldDisablePasswordLogin } = require('./adminAccess');
+const bookingVerification = require('./bookingVerification');
+const { createBookingSubmissionService } = require('./bookingSubmission');
+const { createConflictNeighborhoodRefresher, conflictScopeQuery } = require('./conflictNeighborhood');
+const publicQuery = require('./publicQuery');
 
 initializeApp();
 const db = getFirestore();
+const BOOKING_OTP_HMAC_KEY = defineSecret('BOOKING_OTP_HMAC_KEY');
 
 const REGION = 'australia-southeast1';
 setGlobalOptions({ region: REGION });
 
 const STATUSES = ['pending', 'confirmed', 'rejected', 'cancelled'];
 const ACTIVE_FOR_CONFLICTS = ['pending', 'confirmed'];
+const MAX_CONFLICT_CANDIDATES = 500;
+const MAX_VENUES_FOR_CONFLICTS = 100;
+const CONFLICT_REFRESH_BATCH_SIZE = 50;
+const MAX_SERIES_OCCURRENCES = 500;
+const MAX_BOOKING_DURATION_MS = publicQuery.MAX_RANGE_DAYS * publicQuery.DAY_MS;
+const MAX_IMPORT_DUPLICATE_CANDIDATES = 500;
+
+function boundedEventQuery(query, range, cursor) {
+  let page = query
+    .where('startAt', '<', range.to)
+    .where('endAt', '>', range.from)
+    .orderBy('startAt').orderBy('endAt')
+    .orderBy(FieldPath.documentId());
+  if (cursor) page = page.startAfter(cursor.startAt, cursor.endAt, cursor.id);
+  return page.limit(publicQuery.PAGE_SIZE + 1);
+}
+
+function pageData(snapshot) {
+  const docs = snapshot.docs.slice(0, publicQuery.PAGE_SIZE);
+  const last = docs[docs.length - 1];
+  const rawStart = last?.get('startAt');
+  const nextPageCursor = snapshot.docs.length > publicQuery.PAGE_SIZE
+    ? publicQuery.encodeCursor(rawStart?.toDate ? rawStart.toDate().toISOString() : rawStart, last.get('endAt'), last.id)
+    : null;
+  return { docs, nextPageCursor };
+}
+
+function boundedAdminEventQuery(query, range, cursor) {
+  return boundedEventQuery(query, range, cursor);
+}
+
+function parseEventRange(from, to) {
+  if (from === undefined && to === undefined) return publicQuery.defaultFeedRange();
+  try { return publicQuery.validateRange(from, to); }
+  catch (error) { throw new HttpsError('invalid-argument', error.message); }
+}
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -100,27 +145,51 @@ async function getActiveDoc(collectionName, id, label) {
 /** Load the bookings a candidate at `venueId` can conflict with: same-venue bookings plus bookings at
  * whole-site venues (or every booking when the candidate itself is a whole-site venue). Each carries its
  * own venue buffer as _buf. Read-only; safe inside or outside a transaction. */
-async function loadConflictScope(venueId, tx, bufferOverride) {
+async function loadConflictScope(venueId, tx, startAt, endAt, bufferOverride, cachedVenues) {
   const get = (q) => (tx ? tx.get(q) : q.get());
-  const venueSnap = await get(db.collection('venues'));
-  const venues = venueSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const venueSnap = cachedVenues ? null : await get(db.collection('venues').limit(MAX_VENUES_FOR_CONFLICTS + 1));
+  const venues = cachedVenues || venueSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (venues.length > MAX_VENUES_FOR_CONFLICTS) {
+    throw new HttpsError('resource-exhausted', 'There are too many configured venues to check this request safely.');
+  }
   const vById = new Map(venues.map(v => [v.id, v]));
   const cand = vById.get(venueId);
+  if (!cand) throw new HttpsError('not-found', 'Venue not found.');
   const candBuf = bufferOverride !== undefined ? bufferOverride : resolveBufferHours(cand);
   const ids = isWholeSiteVenue(cand)
     ? venues.map(v => v.id)
     : [venueId, ...venues.filter(isWholeSiteVenue).map(v => v.id)];
-  const snaps = await Promise.all([...new Set(ids)].map(id => get(
-    db.collection('events').where('venueId', '==', id).where('status', 'in', ACTIVE_FOR_CONFLICTS))));
+  const scopedIds = [...new Set(ids)];
+  const maxExistingBuffer = Math.max(0, ...scopedIds.map(id => resolveBufferHours(vById.get(id))));
+  const startMs = new Date(startAt).getTime(), endMs = new Date(endAt).getTime();
+  const lowerMs = startMs - maxExistingBuffer * 60 * 60 * 1000;
+  const upperMs = endMs + Math.max(0, candBuf) * 60 * 60 * 1000;
+  if (!Number.isFinite(lowerMs) || !Number.isFinite(upperMs) || upperMs <= lowerMs ||
+      upperMs - lowerMs > MAX_BOOKING_DURATION_MS) {
+    throw new HttpsError('invalid-argument', 'The requested booking window is too long to check safely.');
+  }
+  const range = { from: new Date(lowerMs).toISOString(), to: new Date(upperMs).toISOString() };
   const events = [];
-  for (const s of snaps) s.forEach(d => events.push({ id: d.id, ...d.data(), _buf: resolveBufferHours(vById.get(d.data().venueId)) }));
+  for (const id of scopedIds) {
+    const remaining = MAX_CONFLICT_CANDIDATES - events.length;
+    const query = conflictScopeQuery(db, id, ACTIVE_FOR_CONFLICTS, range, remaining + 1);
+    const snapshot = await get(query);
+    if (snapshot.size > remaining) {
+      throw new HttpsError('resource-exhausted', 'Too many bookings overlap this time window to check safely. Choose a narrower time or contact the MWA team.');
+    }
+    snapshot.forEach(doc => events.push({
+      id: doc.id,
+      ...doc.data(),
+      _buf: resolveBufferHours(vById.get(doc.data().venueId))
+    }));
+  }
   return { candBuf, events, vById };
 }
 
 /** Find other pending/confirmed bookings that conflict with a candidate slot: same venue or a whole-site
  * venue, symmetric, each booking occupying [start, end + its venue's buffer]. */
-async function findOverlaps(venueId, startAt, endAt, excludeId, tx, bufferHours) {
-  const { candBuf, events, vById } = await loadConflictScope(venueId, tx, bufferHours);
+async function findOverlaps(venueId, startAt, endAt, excludeId, tx, bufferHours, cachedVenues) {
+  const { candBuf, events, vById } = await loadConflictScope(venueId, tx, startAt, endAt, bufferHours, cachedVenues);
   const cand = { startAt, endAt, _buf: candBuf };
   return events
     .filter(d => d.id !== excludeId && rangesConflict(cand, d, 0))
@@ -133,7 +202,15 @@ async function findOverlaps(venueId, startAt, endAt, excludeId, tx, bufferHours)
 
 /** Same rule for many candidate ranges at one venue with a single read. `excludeIds` are ignored as "existing". */
 async function bulkOverlaps(venueId, items, excludeIds, bufferHours) {
-  const { candBuf, events } = await loadConflictScope(venueId, undefined, bufferHours);
+  const starts = items.map(item => new Date(item.startAt).getTime());
+  const ends = items.map(item => new Date(item.endAt).getTime());
+  const { candBuf, events } = await loadConflictScope(
+    venueId,
+    undefined,
+    new Date(Math.min(...starts)).toISOString(),
+    new Date(Math.max(...ends)).toISOString(),
+    bufferHours
+  );
   const skip = new Set(excludeIds || []);
   const existing = events.filter(d => !skip.has(d.id));
   const result = new Map();
@@ -146,6 +223,13 @@ async function bulkOverlaps(venueId, items, excludeIds, bufferHours) {
   result.details = details;
   return result;
 }
+
+const refreshConflictNeighborhood = createConflictNeighborhoodRefresher({
+  db, HttpsError, activeStatuses: ACTIVE_FOR_CONFLICTS,
+  maxCandidates: MAX_CONFLICT_CANDIDATES,
+  maxVenues: MAX_VENUES_FOR_CONFLICTS,
+  findOverlaps, resolveBufferHours, rangesConflict
+});
 
 /** Recompute stored hasConflict/conflictWith for EVERY active booking (same-venue + whole-site, buffer-aware,
  * symmetric), writing only documents whose flags changed. The argument is kept for call-site compatibility:
@@ -173,11 +257,7 @@ async function recomputeVenueConflicts() {
 }
 
 async function commitInChunks(writes, size = 400) {
-  for (let i = 0; i < writes.length; i += size) {
-    const batch = db.batch();
-    for (const w of writes.slice(i, i + size)) w(batch);
-    await batch.commit();
-  }
+  return commitBatches(db, writes, size);
 }
 
 async function writeAudit(entry) {
@@ -207,15 +287,286 @@ function requireAllowedBookingType(department, isAdmin) {
 }
 
 function validateBookingPayload(data) {
-  const required = ['title', 'departmentId', 'venueId', 'startAt', 'endAt', 'contactName', 'contactEmail'];
-  const labels = { departmentId: 'booking type', venueId: 'venue', startAt: 'start time', endAt: 'end time', contactName: 'contact name', contactEmail: 'contact email' };
-  for (const f of required) {
-    if (!data || !data[f]) throw new HttpsError('invalid-argument', `Missing required field: ${labels[f] || f}`);
+  try { return bookingVerification.canonicalBookingPayload(data); }
+  catch (error) { throw new HttpsError('invalid-argument', error.message); }
+}
+
+async function prepareBookingPayload(data, submitterIsAdmin) {
+  const canonical = validateBookingPayload(data);
+  if (submitterIsAdmin && !canonical.contactEmail) {
+    throw new HttpsError('invalid-argument', 'Contact email is required for admin-entered bookings.');
   }
-  if (!(new Date(data.startAt) < new Date(data.endAt))) {
+  const venue = await getActiveDoc('venues', canonical.venueId, 'Venue');
+  const department = await getActiveDoc('departments', canonical.departmentId, 'Booking type');
+  requireAllowedBookingType(department, submitterIsAdmin);
+  const overrides = await getHijriOverrides();
+  const program = programFields({ ...data, ...canonical });
+  const resolvedDates = applyPrayerTimes(resolveBookingDates({ ...data, ...canonical }, overrides), program);
+  if (!(new Date(resolvedDates.startAt) < new Date(resolvedDates.endAt))) {
     throw new HttpsError('invalid-argument', 'End time must be after start time.');
   }
+  if (!validateBookingLeadTime(resolvedDates.startAt, submitterIsAdmin)) {
+    throw new HttpsError(
+      'failed-precondition',
+      `Public bookings must start at least ${MIN_PUBLIC_LEAD_HOURS} hours from now. Please choose a later date and time.`
+    );
+  }
+  const prepared = validateBookingPayload({ ...canonical, ...resolvedDates, ...program });
+  if(!submitterIsAdmin&&(Date.parse(prepared.endAt)-Date.parse(prepared.startAt)>7*86400000||Date.parse(prepared.startAt)>Date.now()+2*366*86400000))throw new HttpsError('invalid-argument','Public bookings must be within two years and last no more than seven days.');
+  return { prepared, venue, department, overrides, program };
 }
+
+function requireCallableAppCheck(request) {
+  if (!request.app?.appId) {
+    throw new HttpsError('failed-precondition', 'Refresh the page and try again with the MWA security check enabled.');
+  }
+}
+
+async function requireRestAppCheck(req) {
+  const token = req.get('X-Firebase-AppCheck') || '';
+  if (!token) throw new HttpsError('failed-precondition', 'Refresh the page and try again with the MWA security check enabled.');
+  try { await getAppCheck().verifyToken(token); }
+  catch { throw new HttpsError('permission-denied', 'The MWA security check could not be verified.'); }
+}
+
+function requestIp(request) {
+  return request.rawRequest?.ip || request.ip || request.rawRequest?.socket?.remoteAddress || 'unknown';
+}
+
+async function takeVerificationRateLimit(contact, ip) {
+  const secret = BOOKING_OTP_HMAC_KEY.value();
+  if (typeof secret !== 'string' || secret.length < 32) {
+    throw new HttpsError('failed-precondition', 'Booking verification is not configured.');
+  }
+  const now = Date.now(), windowMs = 15 * 60 * 1000;
+  const limits = [
+    { ref: db.collection('_bookingVerificationRateLimits').doc(bookingVerification.rateLimitId(secret, 'contact', contact)), max: 3 },
+    { ref: db.collection('_bookingVerificationRateLimits').doc(bookingVerification.rateLimitId(secret, 'ip', ip)), max: 10 },
+    { ref: db.collection('_bookingVerificationRateLimits').doc(bookingVerification.rateLimitId(secret, 'global', 'all')), max: 100 }
+  ];
+  let blocked = false;
+  await db.runTransaction(async tx => {
+    const snapshots = await Promise.all(limits.map(limit => tx.get(limit.ref)));
+    const windows = snapshots.map((snapshot, index) => {
+      const current = snapshot.exists ? snapshot.data() : {};
+      const active = Number(current.windowStartedAt) > now - windowMs;
+      return {
+        limit: limits[index],
+        count: active ? Number(current.count) || 0 : 0,
+        startedAt: active ? current.windowStartedAt : now
+      };
+    });
+    if (windows.some(window => window.count >= window.limit.max)) {
+      blocked = true;
+      return;
+    }
+    for (const window of windows) {
+      tx.set(window.limit.ref, {
+        count: window.count + 1,
+        windowStartedAt: window.startedAt,
+        expiresAt: Timestamp.fromMillis(now + windowMs)
+      });
+    }
+  });
+  if (blocked) throw new HttpsError('resource-exhausted', 'Too many verification attempts. Please wait before trying again.');
+}
+
+function sessionHash(sessionId) {
+  if (typeof sessionId !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(sessionId)) {
+    throw new HttpsError('invalid-argument', 'Refresh the page before starting verification.');
+  }
+  return require('node:crypto').createHash('sha256').update(sessionId).digest('hex');
+}
+
+const createBookingSubmission = createBookingSubmissionService({
+  deliverSubmission,
+  db, FieldValue, Timestamp, HttpsError, bookingVerification, prepareBookingPayload,
+  findOverlaps, resolveBufferHours, refreshConflictNeighborhood,
+  sessionHash, sanitizeVisibility,
+  auditEntry: require('./auditModel').auditEntry,
+  issueLink: require('./emailBookingLink').issueLink,
+  sendAll, notify, hijriInfoFor, dateKeyOf, logger
+});
+
+const BOOKING_CHALLENGE_TTL_MS = 10 * 60 * 1000;
+const MAX_BOOKING_CODE_ATTEMPTS = 5;
+const timestampMillis = value => value?.toMillis ? value.toMillis() : Number(value);
+
+exports.startBookingVerification = onCall({ cors: true, secrets: [...emailSecrets, BOOKING_OTP_HMAC_KEY] }, async request => {
+  requireCallableAppCheck(request);
+  const { method, sessionId, booking, contactEmail, contactPhone } = request.data || {};
+  if (!bookingVerification.METHODS.has(method)) throw new HttpsError('invalid-argument', 'Choose email or mobile verification.');
+  const currentSessionHash = sessionHash(sessionId);
+  // New visitors verify contact before entering booking details; retain old-client compatibility.
+  const prepared = booking ? (await prepareBookingPayload(booking, false)).prepared : {contactEmail,contactPhone};
+  let contact;
+  try {
+    contact = bookingVerification.selectedContact(method, prepared);
+  } catch (error) {
+    throw new HttpsError('invalid-argument', error.message);
+  }
+  const proofPayload = method === 'mobile' ? { ...prepared, contactPhone: contact } : prepared;
+  const key = BOOKING_OTP_HMAC_KEY.value();
+  if (typeof key !== 'string' || key.length < 32) throw new HttpsError('failed-precondition', 'Booking verification is not configured.');
+
+  await takeVerificationRateLimit(contact, requestIp(request));
+  const challengeId = bookingVerification.newChallengeId();
+  const challengeRef = db.collection('_bookingVerificationChallenges').doc(challengeId);
+  const sessionRef = db.collection('_bookingVerificationSessions').doc(currentSessionHash);
+  const code = method === 'email' ? bookingVerification.newEmailCode() : null;
+  const expiresAt = Date.now() + BOOKING_CHALLENGE_TTL_MS;
+  await db.runTransaction(async tx => {
+    const sessionSnapshot = await tx.get(sessionRef);
+    const previousId = sessionSnapshot.exists ? sessionSnapshot.data().challengeId : null;
+    const previousRef = typeof previousId === 'string' && /^[A-Za-z0-9_-]{40,50}$/.test(previousId)
+      ? db.collection('_bookingVerificationChallenges').doc(previousId) : null;
+    const previousSnapshot = previousRef ? await tx.get(previousRef) : null;
+    if (previousSnapshot?.exists && !['consumed', 'superseded'].includes(previousSnapshot.data().status)) {
+      tx.update(previousRef, { status: 'superseded', supersededAt: FieldValue.serverTimestamp() });
+    }
+    tx.create(challengeRef, {
+      purpose: 'public-booking',
+      method,
+      contact,
+      ...(booking ? {payloadDigest: bookingVerification.payloadDigest(proofPayload)} : {scope:'contact'}),
+      sessionIdHash: currentSessionHash,
+      status: method === 'email' ? 'sending' : 'awaiting-phone',
+      attempts: 0,
+      expiresAt: Timestamp.fromMillis(expiresAt),
+      createdAt: FieldValue.serverTimestamp(),
+      ...(code ? { codeVerifier: bookingVerification.codeVerifier(key, challengeId, code) } : {})
+    });
+    tx.set(sessionRef, {
+      challengeId,
+      expiresAt: Timestamp.fromMillis(expiresAt),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+  });
+
+  if (method === 'email') {
+    const result = await sendAll([notify.verificationCode(contact,code)]);
+    if (result[0]?.sent !== true) {
+      await challengeRef.update({ status: 'delivery-failed', codeVerifier: FieldValue.delete() });
+      throw new HttpsError('unavailable', 'We could not send the verification code. Try again later or choose mobile verification.');
+    }
+    await challengeRef.update({ status: 'active' });
+  }
+  return {
+    challengeId,
+    expiresAt,
+    resendAfterMs: 60_000,
+    method,
+    maskedContact: bookingVerification.maskContact(method, contact)
+  };
+});
+
+exports.verifyBookingEmailCode = onCall({ cors: true, secrets: [BOOKING_OTP_HMAC_KEY] }, async request => {
+  requireCallableAppCheck(request);
+  const { challengeId, code, sessionId } = request.data || {};
+  if (typeof challengeId !== 'string' || !/^[A-Za-z0-9_-]{40,50}$/.test(challengeId) ||
+      typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+    throw new HttpsError('invalid-argument', 'Enter the six-digit verification code.');
+  }
+  const currentSessionHash = sessionHash(sessionId);
+  const challengeRef = db.collection('_bookingVerificationChallenges').doc(challengeId);
+  const sessionRef = db.collection('_bookingVerificationSessions').doc(currentSessionHash);
+  let outcome = '';
+  await db.runTransaction(async tx => {
+    const [challengeSnapshot, sessionSnapshot] = await Promise.all([tx.get(challengeRef), tx.get(sessionRef)]);
+    const challenge = challengeSnapshot.exists ? challengeSnapshot.data() : null;
+    if (!challenge || !sessionSnapshot.exists || sessionSnapshot.data().challengeId !== challengeId ||
+        challenge.sessionIdHash !== currentSessionHash || challenge.purpose !== 'public-booking' ||
+        challenge.method !== 'email' || timestampMillis(challenge.expiresAt) <= Date.now() ||
+        !['active', 'verified'].includes(challenge.status)) {
+      outcome = 'expired';
+      return;
+    }
+    if (challenge.status === 'verified') {
+      outcome = 'verified';
+      return;
+    }
+    const expected = bookingVerification.codeVerifier(BOOKING_OTP_HMAC_KEY.value(), challengeId, code);
+    if (!bookingVerification.equalVerifier(challenge.codeVerifier, expected)) {
+      const attempts = (Number(challenge.attempts) || 0) + 1;
+      tx.update(challengeRef, {
+        attempts,
+        ...(attempts >= MAX_BOOKING_CODE_ATTEMPTS
+          ? { status: 'locked', codeVerifier: FieldValue.delete() }
+          : {})
+      });
+      outcome = attempts >= MAX_BOOKING_CODE_ATTEMPTS ? 'locked' : 'invalid';
+      return;
+    }
+    tx.update(challengeRef, {
+      status: 'verified',
+      verifiedAt: FieldValue.serverTimestamp(),
+      codeVerifier: FieldValue.delete()
+    });
+    outcome = 'verified';
+  });
+  if (outcome !== 'verified') {
+    const message = outcome === 'expired'
+      ? 'This verification code expired. Start verification again.'
+      : outcome === 'locked' ? 'Too many incorrect codes. Start verification again.' : 'That code is not correct. Check it and try again.';
+    throw new HttpsError(outcome === 'expired' ? 'deadline-exceeded' : 'invalid-argument', message);
+  }
+  return { verified: true };
+});
+
+exports.verifyBookingMobile = onCall({ cors: true }, async request => {
+  requireCallableAppCheck(request);
+  const { challengeId, idToken, sessionId } = request.data || {};
+  if (typeof challengeId !== 'string' || !/^[A-Za-z0-9_-]{40,50}$/.test(challengeId) ||
+      typeof idToken !== 'string' || idToken.length > 12_000) {
+    throw new HttpsError('invalid-argument', 'Complete mobile verification again.');
+  }
+  const currentSessionHash = sessionHash(sessionId);
+  let decoded;
+  try { decoded = await getAuth().verifyIdToken(idToken, true); }
+  catch { throw new HttpsError('permission-denied', 'The mobile verification could not be confirmed. Try again or choose email.'); }
+  const phone = decoded.phone_number;
+  const signedInAt = Number(decoded.auth_time) * 1000;
+  if (decoded.firebase?.sign_in_provider !== 'phone' || !phone ||
+      !Number.isFinite(signedInAt) || Date.now() - signedInAt > BOOKING_CHALLENGE_TTL_MS ||
+      signedInAt > Date.now() + 60_000) {
+    throw new HttpsError('permission-denied', 'Use a fresh Firebase Phone Auth verification for this booking.');
+  }
+
+  const challengeRef = db.collection('_bookingVerificationChallenges').doc(challengeId);
+  const sessionRef = db.collection('_bookingVerificationSessions').doc(currentSessionHash);
+  let outcome = '';
+  await db.runTransaction(async tx => {
+    const [challengeSnapshot, sessionSnapshot] = await Promise.all([tx.get(challengeRef), tx.get(sessionRef)]);
+    const challenge = challengeSnapshot.exists ? challengeSnapshot.data() : null;
+    if (!challenge || !sessionSnapshot.exists || sessionSnapshot.data().challengeId !== challengeId ||
+        challenge.sessionIdHash !== currentSessionHash || challenge.purpose !== 'public-booking' ||
+        challenge.method !== 'mobile' || timestampMillis(challenge.expiresAt) <= Date.now() ||
+        !['awaiting-phone', 'verified'].includes(challenge.status)) {
+      outcome = 'expired';
+      return;
+    }
+    let normalizedPhone;
+    try { normalizedPhone = bookingVerification.normalizePhone(phone); }
+    catch { outcome = 'mismatch'; return; }
+    if (normalizedPhone !== challenge.contact) {
+      outcome = 'mismatch';
+      return;
+    }
+    if (challenge.status !== 'verified') {
+      tx.update(challengeRef, { status: 'verified', verifiedAt: FieldValue.serverTimestamp() });
+    }
+    outcome = 'verified';
+  });
+  if (outcome !== 'verified') {
+    throw new HttpsError(
+      outcome === 'expired' ? 'deadline-exceeded' : 'permission-denied',
+      outcome === 'expired'
+        ? 'This mobile verification expired. Start again.'
+        : 'The verified mobile number does not match your selected contact.'
+    );
+  }
+  return { verified: true };
+});
 
 // Public projection (see publicProjection.js): confirmed+public in full; confirmed
 // private and pending masked; everything else (rejected/cancelled) dropped (null).
@@ -225,105 +576,16 @@ function sanitizePublicEvent(d, id, overrides) {
 
 const PUBLIC_STATUSES = ['pending', 'confirmed'];
 // â”€â”€ Callable: public booking submission â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-exports.submitBooking = onCall({ cors: true, secrets: emailSecrets }, async (request) => {
-  const data = request.data || {};
-  validateBookingPayload(data);
-
-  const venue = await getActiveDoc('venues', data.venueId, 'Venue');
-  const department = await getActiveDoc('departments', data.departmentId, 'Booking type');
-  const submitterIsAdmin = await isSubmitterAdmin(request.auth);
-  requireAllowedBookingType(department, submitterIsAdmin);
-
-  // Server-side source of truth for Hijri-based submissions: re-derive the
-  // resolved Gregorian startAt/endAt from the submitted hijriDate + the
-  // *current* moon-sighting overrides, rather than trusting whatever the
-  // client happened to compute (which may be stale by the time it's
-  // received). Gregorian-based submissions are passed through unchanged.
-  const overrides = await getHijriOverrides();
-  const program = programFields(data);
-  const resolvedDates = applyPrayerTimes(resolveBookingDates(data, overrides), program);
-  if (!(new Date(resolvedDates.startAt) < new Date(resolvedDates.endAt))) {
-    throw new HttpsError('invalid-argument', 'End time must be after start time.');
-  }
-
-  // Visibility rule: public submitters default to 'public' (safe because
-  // pending bookings only appear publicly as masked items regardless of visibility â€”
-  // see publicProjection.js). A signed-in admin creating a booking on someone's
-  // behalf may explicitly choose public/private; if they don't specify one,
-  // it defaults to private (the safer choice for admin-entered bookings).
-  if (!validateBookingLeadTime(resolvedDates.startAt, submitterIsAdmin)) {
-    throw new HttpsError(
-      'failed-precondition',
-      `Public bookings must start at least ${MIN_PUBLIC_LEAD_HOURS} hours from now. Please choose a later date and time.`
-    );
-  }
-  const explicitVisibility = sanitizeVisibility(data.visibility);
-  const visibility = submitterIsAdmin
-    ? (explicitVisibility || 'private')
-    : (explicitVisibility || 'public');
-
-  let hasConflict = false;
-  let conflictWith = [];
-  let overlapDetails = [];
-  let eventRef;
-
-  const venueBufferHours = resolveBufferHours(venue);
-
-  await db.runTransaction(async (tx) => {
-    const overlaps = await findOverlaps(data.venueId, resolvedDates.startAt, resolvedDates.endAt, null, tx, venueBufferHours);
-    hasConflict = overlaps.length > 0;
-    conflictWith = overlaps.map(o => o.id);
-    overlapDetails = overlaps;
-
-    eventRef = db.collection('events').doc();
-    tx.set(eventRef, {
-      title: String(data.title).slice(0, 200),
-      departmentId: data.departmentId,
-      departmentName: department.name,
-      venueId: data.venueId,
-      venueName: venue.name,
-      startAt: resolvedDates.startAt,
-      endAt: resolvedDates.endAt,
-      status: 'pending',
-      // Pending bookings are always hidden from public views/feeds regardless
-      // of this flag (see the status === 'confirmed' gate above) â€” this only
-      // determines what happens once/if the booking is later confirmed.
-      visibility,
-      requestedVisibility: visibility,
-      dateBasis: data.dateBasis === 'h' ? 'hijri' : 'gregorian',
-      hijriDate: data.hijriDate || null,
-      timeMode: sanitizeTimeMode(data.timeMode),
-      ...program,
-      contactName: String(data.contactName).slice(0, 200),
-      contactEmail: String(data.contactEmail).slice(0, 200),
-      contactPhone: data.contactPhone ? String(data.contactPhone).slice(0, 50) : '',
-      notes: data.notes ? String(data.notes).slice(0, 2000) : '',
-      hasConflict,
-      conflictWith,
-      createdByUid: request.auth ? request.auth.uid : null,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    });
+exports.submitBooking = onCall({ cors: true, secrets: [...emailSecrets, BOOKING_OTP_HMAC_KEY] }, async request => {
+  const isAdmin = await isSubmitterAdmin(request.auth);
+  const authenticated = require('./bookingIdentity').authenticatedBookingIdentity(request.auth);
+  if (!isAdmin) requireCallableAppCheck(request);
+  return createBookingSubmission(request.data || {}, {
+    isAdmin,
+    authenticated,
+    uid: authenticated ? request.auth.uid : null,
+    email: authenticated ? normalizeEmail(request.auth.token.email) : ''
   });
-
-  await recomputeVenueConflicts([data.venueId]);
-  await writeAudit({
-    entityType: 'event', entityId: eventRef.id, action: 'submitted',
-    userId: request.auth ? request.auth.uid : null, userEmail: data.contactEmail,
-    note: hasConflict ? 'Submitted as pending with a detected venue overlap.' : 'Submitted as pending.'
-  });
-
-  // Best-effort notifications (docs/NOTIFICATIONS.md rows 1, 2, 8); never block or fail the request.
-  const saved = (await eventRef.get()).data() || {};
-  const hijri = hijriInfoFor(dateKeyOf(saved.startAt), overrides);
-  const emailActions=submitterIsAdmin?null:await require('./emailBookingLink').issueLink(db,eventRef.id,saved);
-  await sendAll([
-    notify.submissionRequester(saved, hijri),
-    // Admin-entered bookings don't alert the admin inbox about themselves.
-    submitterIsAdmin ? null : notify.submissionAdmin({...saved,id:eventRef.id,emailActions}, hijri, overlapDetails)
-  ]);
-
-  return { id: eventRef.id, hasConflict, status: 'pending' };
 });
 
 // â”€â”€ Callable: admin confirm/reject/cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -363,7 +625,7 @@ exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
   if (explicitVisibility) patch.visibility = explicitVisibility;
 
   await ref.update(patch);
-  await recomputeVenueConflicts([before.venueId]);
+  await refreshConflictNeighborhood([{ id: eventId, before, after: { ...before, ...patch } }]);
   await writeAudit({
     entityType: 'event', entityId: eventId, action: `status_${status}`,
     userId: admin.uid, userEmail: admin.email, note: note || '',
@@ -452,11 +714,16 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
   // time-of-day are applied to every targeted occurrence, each keeping its own date.
   // Moving the date is only allowed for a single occurrence.
   let seriesTargets = [];
+  let seriesConflictChanges = [];
   if (scope !== 'single' && before.seriesId) {
     if (dateKeyOf(update.startAt) !== dateKeyOf(before.startAt)) {
       throw new HttpsError('invalid-argument', 'Dates can only be changed for a single occurrence. Choose "This occurrence only", or delete and recreate the series.');
     }
-    const seriesSnap = await db.collection('events').where('seriesId', '==', before.seriesId).get();
+    const seriesSnap = await db.collection('events').where('seriesId', '==', before.seriesId)
+      .limit(MAX_SERIES_OCCURRENCES + 1).get();
+    if (seriesSnap.size > MAX_SERIES_OCCURRENCES) {
+      throw new HttpsError('resource-exhausted', 'This booking series is too large to update safely in one request.');
+    }
     const docs = seriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     // Past occurrences (already started) are history: never touched by multi-occurrence scopes.
     seriesTargets = selectSeriesTargets(docs, { id: eventId, ...before }, scope, nowIso).filter(t => t.id !== eventId);
@@ -483,6 +750,19 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
       const times = timeChanged ? applyPrayerTimes(retimeOccurrence(t, newStart, newEnd, endNextDay), program) : { startAt: t.startAt, endAt: t.endAt };
       return { id: t.id, startAt: times.startAt, endAt: times.endAt };
     });
+    const targetById = new Map(seriesTargets.map(target => [target.id, target]));
+    seriesConflictChanges = retimed.map(item => {
+      const target = targetById.get(item.id);
+      return {
+        id: item.id,
+        before: target,
+        after: {
+          ...target, ...shared,
+          ...(timeChanged ? { startAt: item.startAt, endAt: item.endAt } : {}),
+          ...(update.timeMode ? { timeMode: update.timeMode } : {})
+        }
+      };
+    });
     const venueSnap = await db.collection('venues').doc(update.venueId).get();
     const overlapMap = await bulkOverlaps(update.venueId, retimed, [eventId, ...retimed.map(r => r.id)], resolveBufferHours(venueSnap.exists ? venueSnap.data() : null));
     let batch = db.batch();
@@ -502,7 +782,6 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
     });
   }
 
-  await recomputeVenueConflicts([before.venueId, update.venueId]);
   await writeAudit({
     entityType: 'event', entityId: eventId, action: 'updated',
     userId: admin.uid, userEmail: admin.email,
@@ -511,9 +790,17 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
       : null
   });
 
-  const fresh = await ref.get();
+  let fresh = await ref.get();
   // Row 6: tell the requester only when a confirmed booking's date, time or venue changed (one email per edit).
-  const after = fresh.exists ? fresh.data() : { ...before, ...update };
+  let after = fresh.exists ? fresh.data() : { ...before, ...update };
+  const conflictChanges = anchorLocked
+    ? seriesConflictChanges
+    : [...seriesConflictChanges, { id: eventId, before, after }];
+  for (let offset = 0; offset < conflictChanges.length; offset += CONFLICT_REFRESH_BATCH_SIZE) {
+    await refreshConflictNeighborhood(conflictChanges.slice(offset, offset + CONFLICT_REFRESH_BATCH_SIZE));
+  }
+  fresh = await ref.get();
+  after = fresh.exists ? fresh.data() : after;
   if (before.status === 'confirmed' && notify.scheduleChanged(before, after)) {
     const uHijri = hijriInfoFor(dateKeyOf(after.startAt), await getHijriOverrides());
     await sendAll([notify.updateRequester(after, uHijri, { previous: before, occurrences: seriesUpdated + (anchorLocked ? 0 : 1) })]);
@@ -609,7 +896,20 @@ exports.createRecurringBooking = onCall({ cors: true, secrets: emailSecrets }, a
     });
   });
   await commitInChunks(writes);
-  await recomputeVenueConflicts([data.venueId]);
+  const conflictChanges = occurrences.map((occurrence, index) => ({
+    id: refs[index].id,
+    after: {
+      venueId: data.venueId,
+      startAt: occurrence.startAt,
+      endAt: occurrence.endAt,
+      status,
+      conflictWith: []
+    }
+  }));
+  for (let offset = 0; offset < conflictChanges.length; offset += CONFLICT_REFRESH_BATCH_SIZE) {
+    await refreshConflictNeighborhood(conflictChanges.slice(offset, offset + CONFLICT_REFRESH_BATCH_SIZE));
+  }
+  conflicts = (await db.getAll(...refs)).filter(doc => doc.exists && doc.data().hasConflict).length;
   await writeAudit({
     entityType: 'series', entityId: seriesId, action: 'series_created',
     userId: admin.uid, userEmail: admin.email,
@@ -665,7 +965,11 @@ exports.deleteBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
   let targets = [anchor];
   let kept = 0;
   if (scope !== 'single' && anchor.seriesId) {
-    const seriesSnap = await db.collection('events').where('seriesId', '==', anchor.seriesId).get();
+    const seriesSnap = await db.collection('events').where('seriesId', '==', anchor.seriesId)
+      .limit(MAX_SERIES_OCCURRENCES + 1).get();
+    if (seriesSnap.size > MAX_SERIES_OCCURRENCES) {
+      throw new HttpsError('resource-exhausted', 'This booking series is too large to delete safely in one request.');
+    }
     const docs = seriesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     const all = selectSeriesTargets(docs, anchor, scope);
     targets = selectSeriesTargets(docs, anchor, scope, nowIso);
@@ -686,7 +990,10 @@ exports.deleteBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
     }));
   }
   await commitInChunks(writes, 400);
-  await recomputeVenueConflicts([anchor.venueId]);
+  const conflictChanges = targets.map(target => ({ id: target.id, before: target }));
+  for (let offset = 0; offset < conflictChanges.length; offset += CONFLICT_REFRESH_BATCH_SIZE) {
+    await refreshConflictNeighborhood(conflictChanges.slice(offset, offset + CONFLICT_REFRESH_BATCH_SIZE));
+  }
   // Row 7: deleting confirmed bookings is treated like a cancellation; pending/decided-negative ones send nothing.
   const confirmedGone = targets.filter(t => t.status === 'confirmed').sort((a, b) => String(a.startAt).localeCompare(String(b.startAt)));
   if (confirmedGone.length) {
@@ -729,21 +1036,53 @@ exports.importBookings = onCall({ cors: true, timeoutSeconds: 120 }, async (requ
   if (!Array.isArray(rows)) throw new HttpsError('invalid-argument', 'rows must be an array.');
   if (rows.length > MAX_IMPORT_ROWS) throw new HttpsError('invalid-argument', `Too many rows (max ${MAX_IMPORT_ROWS}).`);
 
-  const [deptSnap, venueSnap, eventSnap] = await Promise.all([
-    db.collection('departments').get(), db.collection('venues').get(), db.collection('events').get()
+  const [deptSnap, venueSnap] = await Promise.all([
+    db.collection('departments').limit(MAX_IMPORT_ROWS + 1).get(),
+    db.collection('venues').limit(MAX_IMPORT_ROWS + 1).get()
   ]);
+  if (deptSnap.size > MAX_IMPORT_ROWS || venueSnap.size > MAX_IMPORT_ROWS) {
+    throw new HttpsError('resource-exhausted', 'Too many booking types or venues to validate this import safely.');
+  }
   const departments = deptSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const venues = venueSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const existingById = {};
-  const existingKeys = new Set();
-  eventSnap.forEach(d => {
-    const v = d.data();
-    existingById[d.id] = v;
-    existingKeys.add(`${v.venueId}|${v.startAt}|${v.endAt}|${String(v.title || '').trim().toLowerCase()}`);
-  });
+  const ids = importIds(rows);
+  if (ids.length) {
+    const existing = await db.getAll(...ids.map(id => db.collection('events').doc(id)));
+    existing.forEach(doc => { if (doc.exists) existingById[doc.id] = doc.data(); });
+  }
 
   const hijriOverrides = await getHijriOverrides();
-  const report = validateImportRows(rows, { departments, venues, existingById, existingKeys, hijriOverrides });
+  const validationContext = { departments, venues, existingById, existingKeys: new Set(), hijriOverrides };
+  const firstPass = validateImportRows(rows, validationContext);
+  const candidates = new Map();
+  for (const row of firstPass.rows) {
+    if (row.action !== 'create') continue;
+    const data = row.data;
+    const key = `${data.venueId}|${data.startAt}|${data.endAt}|${data.title.trim().toLowerCase()}`;
+    if (!candidates.has(key)) candidates.set(key, data);
+  }
+  let duplicateCandidatesRead = 0;
+  for (const data of candidates.values()) {
+    const remaining = MAX_IMPORT_DUPLICATE_CANDIDATES - duplicateCandidatesRead;
+    const matching = await db.collection('events')
+      .where('venueId', '==', data.venueId)
+      .where('startAt', '==', data.startAt)
+      .where('endAt', '==', data.endAt)
+      .limit(Math.min(remaining + 1, MAX_IMPORT_ROWS + 1))
+      .get();
+    if (matching.size > remaining) {
+      throw new HttpsError('resource-exhausted', 'Too many matching bookings to check this import safely.');
+    }
+    duplicateCandidatesRead += matching.size;
+    matching.forEach(doc => {
+      const event = doc.data();
+      validationContext.existingKeys.add(
+        `${event.venueId}|${event.startAt}|${event.endAt}|${String(event.title || '').trim().toLowerCase()}`
+      );
+    });
+  }
+  const report = validateImportRows(rows, validationContext);
   const summary = {
     errors: report.errors, counts: report.counts,
     rows: report.rows.map(r => ({ row: r.row, action: r.action, id: r.id || null, title: r.data.title, startAt: r.data.startAt, endAt: r.data.endAt, warnings: r.warnings }))
@@ -752,30 +1091,45 @@ exports.importBookings = onCall({ cors: true, timeoutSeconds: 120 }, async (requ
   if (report.errors.length) throw new HttpsError('failed-precondition', 'Fix the row errors before importing.');
 
   const writes = [];
-  const venueIds = [];
+  const conflictChanges = [];
   let created = 0; let updated = 0;
   for (const r of report.rows) {
     if (r.action === 'skip') continue;
     const ref = r.action === 'update' ? db.collection('events').doc(r.id) : db.collection('events').doc();
     const base = { ...r.data, venueId: r.data.venueId, updatedAt: FieldValue.serverTimestamp() };
-    venueIds.push(r.data.venueId);
+    const before = r.action === 'update' ? existingById[r.id] : null;
     if (r.action === 'update') {
       updated += 1;
-      if (existingById[r.id] && existingById[r.id].venueId) venueIds.push(existingById[r.id].venueId);
       writes.push((batch) => batch.set(ref, base, { merge: true }));
     } else {
       created += 1;
       writes.push((batch) => batch.set(ref, { ...base, hasConflict: false, conflictWith: [], createdByUid: admin.uid, createdAt: FieldValue.serverTimestamp() }));
     }
+    conflictChanges.push({
+      id: ref.id,
+      before,
+      after: {
+        ...(before || {}),
+        ...r.data,
+        ...(r.action === 'create' ? { hasConflict: false, conflictWith: [] } : {})
+      }
+    });
     writes.push((batch) => batch.set(db.collection('auditLog').doc(), {
       entityType: 'event', entityId: ref.id, action: r.action === 'update' ? 'import_updated' : 'imported',
       userId: admin.uid, userEmail: admin.email,
       note: `Excel import row ${r.row}: ${String(r.data.title).slice(0, 80)}`, diff: null, timestamp: new Date().toISOString()
     }));
   }
-  await commitInChunks(writes, 400);
-  await recomputeVenueConflicts(venueIds);
-  await writeAudit({ entityType: 'event', entityId: 'import', action: 'import_summary', userId: admin.uid, userEmail: admin.email, note: `Excel import: ${created} created, ${updated} updated, ${report.counts.skip || 0} skipped.` });
+  await completeImport({
+    commit: () => commitInChunks(writes, 400),
+    refresh: async () => {
+      for (let offset = 0; offset < conflictChanges.length; offset += CONFLICT_REFRESH_BATCH_SIZE) {
+        await refreshConflictNeighborhood(conflictChanges.slice(offset, offset + CONFLICT_REFRESH_BATCH_SIZE));
+      }
+    },
+    audit: () => writeAudit({ entityType: 'event', entityId: 'import', action: 'import_summary', userId: admin.uid, userEmail: admin.email, note: `Excel import: ${created} created, ${updated} updated, ${report.counts.skip || 0} skipped.` }),
+    logError: details => logger.error('Excel import did not complete', details)
+  });
   return { dryRun: false, created, updated, skipped: report.counts.skip || 0, ...summary };
 });
 
@@ -785,20 +1139,24 @@ exports.importBookings = onCall({ cors: true, timeoutSeconds: 120 }, async (requ
 /** Called by the client after every sign-in. Grants, migrates, revokes or denies admin access. */
 exports.syncAdminAccess = onCall({ cors: true }, async (request) => {
   const auth = request.auth;
+  if(auth){const viewer=await require('./responseViewer').resolveViewer(db,auth.uid,auth.token);if(viewer)return {admin:false,viewer:true};}
   if (!auth) throw new HttpsError('unauthenticated', 'Sign in first.');
   const email = normalizeEmail(auth.token.email);
   const emailVerified = auth.token.email_verified === true;
   const provider = auth.token.firebase?.sign_in_provider || '';
   const userRef = db.collection('users').doc(auth.uid);
+  const grantRef = email ? db.collection('adminAllowlist').doc(email) : null;
   const [userSnap, listSnap, passwordLoginDisabled] = await Promise.all([
     userRef.get(),
-    email ? db.collection('adminAllowlist').doc(email).get() : Promise.resolve(null),
+    grantRef ? grantRef.get() : Promise.resolve(null),
     isPasswordLoginDisabled()
   ]);
   const decision = decideSignIn({
     email,
     emailVerified,
     allowlisted: !!(listSnap && listSnap.exists),
+    grantUid: listSnap?.data()?.uid,
+    uid: auth.uid,
     userDoc: userSnap.exists ? userSnap.data() : null,
     provider,
     passwordLoginDisabled
@@ -810,7 +1168,7 @@ exports.syncAdminAccess = onCall({ cors: true }, async (request) => {
     const listRef=db.collection('adminAllowlist').doc(email);
     await db.runTransaction(async tx=>{
       const [freshList,freshUser]=await Promise.all([tx.get(listRef),tx.get(userRef)]);
-      const current=decideSignIn({email,emailVerified,provider,passwordLoginDisabled,allowlisted:freshList.exists,userDoc:freshUser.exists?freshUser.data():null});
+      const current=decideSignIn({email,emailVerified,provider,passwordLoginDisabled,allowlisted:freshList.exists,grantUid:freshList.data()?.uid,uid:auth.uid,userDoc:freshUser.exists?freshUser.data():null});
       if(!['grant','migrate'].includes(current.action))throw new HttpsError('permission-denied','Admin access was removed.');
       tx.set(userRef,{role:'admin',email,displayName,allowlistManaged:true,lastSignInAt:now,lastSignInProvider:provider},{merge:true});
       if(!freshList.exists)tx.create(listRef,{email,addedBy:current.owner?'account owner':'existing admin (migrated)',addedAt:now,uid:auth.uid,displayName,lastSignInAt:now});
@@ -860,21 +1218,80 @@ exports.removeAdminEmail = onCall({ cors: true }, async (request) => {
 
 // â”€â”€ Callable: public read of sanitized events (confirmed in full if public; private & pending masked) â”€â”€
 exports.getPublicEvents = onCall({ cors: true }, async (request) => {
-  const { from, to } = request.data || {};
-  const snap = await db.collection('events').where('status', 'in', PUBLIC_STATUSES).get();
+  const { from, to, cursor: rawCursor } = request.data || {};
+  const range = parseEventRange(from, to);
+  let cursor = null;
+  if (rawCursor) {
+    try { cursor = publicQuery.decodeCursor(rawCursor); }
+    catch (error) { throw new HttpsError('invalid-argument', error.message); }
+  }
+  const snap = await boundedEventQuery(
+    db.collection('events').where('status', 'in', PUBLIC_STATUSES),
+    range,
+    cursor
+  ).get();
+  const page = pageData(snap);
   const overrides = await getHijriOverrides();
-  let events = snap.docs.map(d => sanitizePublicEvent(d.data(), d.id, overrides)).filter(Boolean);
-  if (from) events = events.filter(e => e.startAt >= from);
-  if (to) events = events.filter(e => e.startAt <= to);
-  return { events };
+  const events = page.docs.map(d => sanitizePublicEvent(d.data(), d.id, overrides)).filter(Boolean);
+  return { events, nextPageCursor: page.nextPageCursor };
+});
+
+exports.getAdminEvents = onCall({ cors: true }, async request => {
+  await requireAdmin(request.auth, 'events-bookings');
+  const input = request.data || {};
+  if (input.allTime !== undefined && typeof input.allTime !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'The all-time option must be a boolean.');
+  }
+  if (input.allTime && (input.from !== undefined || input.to !== undefined)) {
+    throw new HttpsError('invalid-argument', 'Do not combine all-time bookings with a date range.');
+  }
+  const allTime = input.allTime === true;
+  const range = allTime ? null : parseEventRange(input.from, input.to);
+  const adminBookingQuery = require('./adminBookingQuery');
+  let cursor = null;
+  if (input.cursor) {
+    try { cursor = allTime ? adminBookingQuery.decodeBookingCursor(input.cursor) : publicQuery.decodeCursor(input.cursor); }
+    catch (error) { throw new HttpsError('invalid-argument', error.message); }
+  }
+  const query = allTime
+    ? adminBookingQuery.allBookingsPage(db.collection('events'), FieldPath.documentId(), cursor)
+    : boundedAdminEventQuery(db.collection('events'), range, cursor);
+  const snapshot = await query.get();
+  const page = allTime ? adminBookingQuery.allBookingsPageData(snapshot) : pageData(snapshot);
+  const overrides = await getHijriOverrides();
+  return {
+    events: page.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      ...(allTime ? { id: doc.id } : {}),
+      hijri: hijriInfoFor(dateKeyOf(doc.data().startAt), overrides)
+    })),
+    nextPageCursor: page.nextPageCursor,
+    ...(allTime ? { scope: 'all-time' } : {})
+  };
 });
 
 // â”€â”€ Public iCal feed (confirmed + public only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 exports.icalFeed = onRequest({ cors: true }, async (req, res) => {
   try {
-    const snap = await db.collection('events').where('status', 'in', PUBLIC_STATUSES).get();
+    const range = publicQuery.defaultFeedRange();
+    const events = [];
+    let cursor = null;
+    do {
+      const snap = await boundedEventQuery(
+        db.collection('events').where('status', 'in', PUBLIC_STATUSES),
+        range,
+        cursor
+      ).get();
+      const page = pageData(snap);
+      events.push(...page.docs);
+      if (events.length > publicQuery.MAX_RESULTS) {
+        throw new HttpsError('resource-exhausted', 'The public calendar is too large to export safely.');
+      }
+      cursor = page.nextPageCursor ? publicQuery.decodeCursor(page.nextPageCursor) : null;
+    } while (cursor);
     const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MWA Central Calendar//EN', 'CALSCALE:GREGORIAN'];
-    snap.forEach(doc => {
+    events.forEach(doc => {
       // Masked projection: private/pending items show only time + venue with a masked title.
       const e = projectPublicEvent(doc.data(), doc.id, null);
       if (!e) return;
@@ -899,8 +1316,8 @@ exports.icalFeed = onRequest({ cors: true }, async (req, res) => {
     res.set('Cache-Control', 'public, max-age=300');
     res.send(lines.join('\r\n'));
   } catch (err) {
-    logger.error('icalFeed failed', err);
-    res.status(500).send('Could not build calendar feed.');
+    logger.error('icalFeed failed', { error: err.message });
+    res.status(err instanceof HttpsError ? 503 : 500).send('Could not build the bounded calendar feed. Please retry later.');
   }
 });
 
@@ -921,7 +1338,7 @@ function icsEscape(text) {
 // docs/API.md for the documented contract and known limitations.
 const app = express();
 app.use(cors({ origin: true }));
-app.use(express.json());
+app.use(jsonBody);
 
 async function authenticateAdmin(req) {
   const header = req.get('Authorization') || '';
@@ -936,74 +1353,49 @@ async function authenticateAdmin(req) {
 }
 
 app.get('/v1/events', async (req, res) => {
-  const { from, to, venue, department, status } = req.query;
-  const admin = await authenticateAdmin(req);
-  let query = db.collection('events');
-  if (!admin) {
-    // Guests only ever receive the sanitized projection (confirmed in full if public,
-    // masked if private; pending masked; rejected/cancelled dropped), regardless of filters.
-    query = query.where('status', 'in', PUBLIC_STATUSES);
-  } else if (status) {
-    query = query.where('status', '==', status);
+  try {
+    const { from, to, venue, department, status, cursor: rawCursor } = req.query;
+    const range = parseEventRange(from, to);
+    let cursor = null;
+    if (rawCursor) cursor = publicQuery.decodeCursor(rawCursor);
+    const admin = await authenticateAdmin(req);
+    let query = db.collection('events');
+    if (!admin) {
+      query = query.where('status', 'in', PUBLIC_STATUSES);
+    } else if (status) {
+      if (!STATUSES.includes(status)) throw new HttpsError('invalid-argument', 'Invalid status filter.');
+      query = query.where('status', '==', status);
+    }
+    if (venue) query = query.where('venueId', '==', venue);
+    if (department) query = query.where('departmentId', '==', department);
+    const snapshot = await boundedEventQuery(query, range, cursor).get();
+    const page = pageData(snapshot);
+    const overrides = await getHijriOverrides();
+    const events = page.docs.map(d => admin
+      ? { id: d.id, ...d.data(), hijri: hijriInfoFor(dateKeyOf(d.data().startAt), overrides) }
+      : sanitizePublicEvent(d.data(), d.id, overrides)).filter(Boolean);
+    res.json({ events, nextPageCursor: page.nextPageCursor });
+  } catch (error) {
+    if (error instanceof HttpsError) return res.status(mapHttpsErrorCode(error.code)).json({ error: error.message });
+    logger.error('GET /v1/events failed', { error: error.message });
+    res.status(500).json({ error: 'Could not load events.' });
   }
-  if (venue) query = query.where('venueId', '==', venue);
-  if (department) query = query.where('departmentId', '==', department);
-
-  const snap = await query.get();
-  const overrides = await getHijriOverrides();
-  let events = snap.docs.map(d => admin
-    ? { id: d.id, ...d.data(), hijri: hijriInfoFor(dateKeyOf(d.data().startAt), overrides) }
-    : sanitizePublicEvent(d.data(), d.id, overrides)).filter(Boolean);
-  if (from) events = events.filter(e => e.startAt >= from);
-  if (to) events = events.filter(e => e.startAt <= to);
-  res.json({ events });
 });
 
 app.post('/v1/events', async (req, res) => {
   try {
-    validateBookingPayload(req.body);
-    const venue = await getActiveDoc('venues', req.body.venueId, 'Venue');
-    const department = await getActiveDoc('departments', req.body.departmentId, 'Booking type');
     const admin = await authenticateAdmin(req);
-    requireAllowedBookingType(department, !!admin);
-    const overrides = await getHijriOverrides();
-    const program = programFields(req.body);
-    const resolvedDates = applyPrayerTimes(resolveBookingDates(req.body, overrides), program);
-    if (!validateBookingLeadTime(resolvedDates.startAt, !!admin)) {
-      throw new HttpsError(
-        'failed-precondition',
-        `Public bookings must start at least ${MIN_PUBLIC_LEAD_HOURS} hours from now. Please choose a later date and time.`
-      );
-    }
-    const overlaps = await findOverlaps(req.body.venueId, resolvedDates.startAt, resolvedDates.endAt, null, undefined, resolveBufferHours(venue));
-    // Same visibility rule as the submitBooking callable: public submissions
-    // default to 'public' (safe â€” pending bookings are masked publicly regardless),
-    // an authenticated admin caller may explicitly choose, defaulting to
-    // 'private' for admin-entered bookings if unspecified.
-    const explicitVisibility = sanitizeVisibility(req.body.visibility);
-    const visibility = admin ? (explicitVisibility || 'private') : (explicitVisibility || 'public');
-    const ref = db.collection('events').doc();
-    await ref.set({
-      title: String(req.body.title).slice(0, 200),
-      departmentId: req.body.departmentId, departmentName: department.name,
-      venueId: req.body.venueId, venueName: venue.name,
-      startAt: resolvedDates.startAt, endAt: resolvedDates.endAt,
-      status: 'pending', visibility,
-      requestedVisibility: visibility,
-      dateBasis: req.body.dateBasis === 'h' ? 'hijri' : 'gregorian',
-      hijriDate: req.body.hijriDate || null,
-      timeMode: sanitizeTimeMode(req.body.timeMode),
-      ...program,
-      contactName: String(req.body.contactName).slice(0, 200),
-      contactEmail: String(req.body.contactEmail).slice(0, 200),
-      contactPhone: req.body.contactPhone || '',
-      notes: req.body.notes || '',
-      hasConflict: overlaps.length > 0, conflictWith: overlaps.map(o => o.id),
-      createdByUid: admin ? admin.uid : null,
-      createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
+    let identity=null;
+    const bearer=/^Bearer (.+)$/i.exec(req.headers.authorization||'');
+    if(bearer){try{const token=await getAuth().verifyIdToken(bearer[1],true);if(require('./bookingIdentity').authenticatedBookingIdentity({uid:token.uid,token}))identity=token;}catch{throw new HttpsError('unauthenticated','Your sign-in expired. Sign in again.');}}
+    if (!admin) await requireRestAppCheck(req);
+    const result = await createBookingSubmission(req.body || {}, {
+      isAdmin: !!admin,
+      authenticated:!!identity,
+      uid: admin?.uid || identity?.uid || null,
+      email: admin?.email || identity?.email || ''
     });
-    await writeAudit({ entityType: 'event', entityId: ref.id, action: 'submitted', note: 'via REST API' });
-    res.status(201).json({ id: ref.id, hasConflict: overlaps.length > 0, status: 'pending' });
+    res.status(result.replayed ? 200 : 201).json(result);
   } catch (err) {
     if (err instanceof HttpsError) return res.status(mapHttpsErrorCode(err.code)).json({ error: err.message, conflictWith: [] });
     logger.error('POST /v1/events failed', err);
@@ -1044,15 +1436,23 @@ app.patch('/v1/events/:id/status', async (req, res) => {
 app.get('/v1/availability', async (req, res) => {
   const { venue, date } = req.query;
   if (!venue || !date) return res.status(400).json({ error: 'venue and date (YYYY-MM-DD) are required.' });
-  const dayStart = `${date}T00:00:00.000Z`;
-  const dayEnd = `${date}T23:59:59.999Z`;
+  let range;
+  try { range = publicQuery.civilDayRange(date); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
   const snap = await db.collection('events')
     .where('venueId', '==', venue)
     .where('status', 'in', ACTIVE_FOR_CONFLICTS)
+    .where('startAt', '<', range.to)
+    .where('endAt', '>', range.from)
+    .orderBy('startAt').orderBy('endAt')
+    .orderBy(FieldPath.documentId())
+    .limit(MAX_CONFLICT_CANDIDATES + 1)
     .get();
+  if (snap.size > MAX_CONFLICT_CANDIDATES) {
+    return res.status(503).json({ error: 'Too many bookings fall in this availability window. Please retry later.' });
+  }
   const busy = snap.docs
     .map(d => d.data())
-    .filter(e => rangesOverlap(e.startAt, e.endAt, dayStart, dayEnd))
     .map(e => ({ start: e.startAt, end: e.endAt, status: e.status }));
   res.json({ venue, date, busy });
 });
@@ -1061,7 +1461,7 @@ function mapHttpsErrorCode(code) {
   return { 'invalid-argument': 400, 'failed-precondition': 400, 'not-found': 404, 'permission-denied': 403, unauthenticated: 401 }[code] || 500;
 }
 
-exports.api = onRequest({ cors: true }, app);
+exports.api = onRequest({ cors: true, secrets: [...emailSecrets, BOOKING_OTP_HMAC_KEY] }, app);
 
 // â”€â”€ Trigger: re-resolve Hijri-sourced bookings after an admin moon-sighting
 // adjustment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1073,65 +1473,25 @@ exports.api = onRequest({ cors: true }, app);
 // startAt/endAt is recomputed here so its calendar placement, conflict
 // detection and exports/API all reflect the new adjustment, without ever
 // touching the booking's fixed Hijri day.
-exports.onHijriSettingsChanged = onDocumentWritten({ document: 'calendarSettings/hijri', secrets: emailSecrets }, async (event) => {
-  const beforeOverrides = event.data?.before?.exists ? (event.data.before.data().overrides || []) : [];
-  const afterOverrides = event.data?.after?.exists ? (event.data.after.data().overrides || []) : [];
-  if (JSON.stringify(beforeOverrides) === JSON.stringify(afterOverrides)) return; // no-op write, skip
-
-  const snap = await db.collection('events').where('dateBasis', '==', 'hijri').get();
-  if (snap.empty) return;
-
-  let batch = db.batch();
-  let opsInBatch = 0;
-  const auditEntries = [];
-  const moved = [];
-
-  for (const doc of snap.docs) {
-    const before = doc.data();
-    if (!before.hijriDate) continue;
-    const resolved = resolveBookingDates(before, afterOverrides);
-    if (!resolved.resolved || (resolved.startAt === before.startAt && resolved.endAt === before.endAt)) continue;
-
-    const patch = { startAt: resolved.startAt, endAt: resolved.endAt, updatedAt: FieldValue.serverTimestamp() };
-    if (ACTIVE_FOR_CONFLICTS.includes(before.status)) {
-      const bufferHours = resolveBufferHours(await (async () => {
-        const vSnap = await db.collection('venues').doc(before.venueId).get();
-        return vSnap.exists ? vSnap.data() : null;
-      })());
-      const overlaps = await findOverlaps(before.venueId, resolved.startAt, resolved.endAt, doc.id, undefined, bufferHours);
-      patch.hasConflict = overlaps.length > 0;
-      patch.conflictWith = overlaps.map(o => o.id);
-    }
-
-    batch.update(doc.ref, patch);
-    opsInBatch += 1;
-    if (ACTIVE_FOR_CONFLICTS.includes(before.status) && dateKeyOf(before.startAt) !== dateKeyOf(resolved.startAt)) {
-      moved.push({ id: doc.id, before, after: { ...before, ...patch } });
-    }
-    auditEntries.push({
-      entityType: 'event', entityId: doc.id, action: 'hijri_date_resolved',
-      note: 'Resolved Gregorian date updated for a Hijri-sourced booking after a moon-sighting adjustment change.',
-      diff: { from: { startAt: before.startAt, endAt: before.endAt }, to: { startAt: resolved.startAt, endAt: resolved.endAt } }
-    });
-
-    if (opsInBatch >= 450) {
-      await batch.commit();
-      batch = db.batch();
-      opsInBatch = 0;
-    }
-  }
-
-  if (opsInBatch > 0) await batch.commit();
-  for (const entry of auditEntries) await writeAudit(entry);
-
-  // Row 11: only bookings whose civil date actually moved. Requesters of confirmed bookings + one admin digest.
-  if (moved.length) {
-    const msgs = moved
-      .filter(m => m.before.status === 'confirmed')
-      .map(m => notify.moonSightingRequester(m.after, hijriInfoFor(dateKeyOf(m.after.startAt), afterOverrides), m.before));
-    msgs.push(notify.moonSightingAdmin(moved.map(m => ({ title: m.before.title, status: m.before.status, fromStartAt: m.before.startAt, toStartAt: m.after.startAt }))));
-    await sendAll(msgs);
-  }
+const {createHijriRecovery} = require('./hijriRecovery');
+const hijriRecovery = createHijriRecovery({
+  db, FieldValue, HttpsError, resolveBookingDates, dateKeyOf, hijriInfoFor, notify, sendMail,
+  activeStatuses: ACTIVE_FOR_CONFLICTS, findOverlaps, resolveBufferHours,
+  maxVenues: MAX_VENUES_FOR_CONFLICTS, auditEntry: require('./auditModel').auditEntry, logger
+});
+exports.onHijriSettingsChanged = onDocumentWritten({ document: 'calendarSettings/hijri', secrets: emailSecrets, retry: true, timeoutSeconds: 540 }, async event => {
+  const deadline = Date.now() + 7 * 60 * 1000;
+  await hijriRecovery.handleSettingsEvent(event, { deadline });
+});
+exports.retryHijriRecovery = onSchedule({ schedule: 'every 5 minutes', timeoutSeconds: 540, secrets: emailSecrets }, () => hijriRecovery.sweep());
+exports.getHijriRecoveryStatus = onCall({ cors: true }, async request => {
+  await requireAdmin(request.auth, 'calendar-management');
+  return hijriRecovery.status();
+});
+exports.resolveHijriNotificationReview = onCall({ cors: true }, async request => {
+  const admin = await requireAdmin(request.auth, 'calendar-management');
+  await hijriRecovery.resolveReview(request.data?.id, admin);
+  return { ok: true };
 });
 
 // ── Scheduled: reminder 2 days before each confirmed booking (row 12) ──
@@ -1172,6 +1532,19 @@ Object.assign(exports,require('./auditedAdmin').register({db,onCall,HttpsError,r
 
 Object.assign(exports,require('./teamPermissions').register({db,onCall,HttpsError,requireAdmin}));
 
-Object.assign(exports,require('./bookingEmailDecision').register({db,onCall,HttpsError,requireAdmin,FieldValue,emailSecrets,findOverlaps,recomputeVenueConflicts,sendAll,notify,getHijriOverrides,hijriInfoFor,dateKeyOf,logger}));
+Object.assign(exports,require('./bookingEmailDecision').register({db,onCall,HttpsError,requireAdmin,FieldValue,emailSecrets,findOverlaps,recomputeVenueConflicts,refreshConflictNeighborhood,sendAll,notify,getHijriOverrides,hijriInfoFor,dateKeyOf,logger}));
 
-Object.assign(exports,require('./emailBookingLink').register({db,onRequest,FieldValue,emailSecrets,findOverlaps,recomputeVenueConflicts,sendAll,notify,getHijriOverrides,hijriInfoFor,dateKeyOf,logger}));
+Object.assign(exports,require('./emailBookingLink').register({db,onRequest,FieldValue,emailSecrets,findOverlaps,recomputeVenueConflicts,refreshConflictNeighborhood,sendAll,notify,getHijriOverrides,hijriInfoFor,dateKeyOf,logger}));
+
+const bookingOutbox=require('./bookingOutbox');
+async function deliverSubmission(id){return bookingOutbox.deliver(db,id,async(job)=>{
+ const event=(await db.doc('events/'+id).get()).data();if(!event)return [];
+ const hijri=hijriInfoFor(dateKeyOf(event.startAt),await getHijriOverrides());
+ const actions=job.submitterIsAdmin||event.status!=='pending'?null:await require('./emailBookingLink').issueLink(db,id,event);
+ return [notify.submissionRequester(event,hijri),job.submitterIsAdmin?null:notify.submissionAdmin({...event,id,emailActions:actions},hijri,job.overlapDetails||[])].filter(Boolean);
+},require('./mailer').sendMail);}
+exports.bookingSubmissionDelivery=onDocumentWritten({document:'_bookingSubmissionJobs/{id}',secrets:emailSecrets},event=>deliverSubmission(event.params.id));
+exports.bookingSubmissionRetry=onSchedule({schedule:'every 5 minutes',secrets:emailSecrets},async()=>{
+ const jobs=await db.collection('_bookingSubmissionJobs').where('state','==','pending').where('nextAttempt','<=',Date.now()).orderBy('nextAttempt').limit(30).get();
+ for(const job of jobs.docs)await deliverSubmission(job.id);
+});

@@ -69,6 +69,21 @@
       "id": "form-builder",
       "name": "Form Builder",
       "live": true
+    },
+    {
+      "id": "form-insights",
+      "name": "Form Insights \u2014 aggregate reports",
+      "live": true
+    },
+    {
+      "id": "form-insights-people",
+      "name": "Form Insights \u2014 person search",
+      "live": true
+    },
+    {
+      "id": "form-insights-export",
+      "name": "Form Insights \u2014 exports",
+      "live": true
     }
   ],
   "legacyModules": [

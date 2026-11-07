@@ -42,3 +42,22 @@ test('exact same time same venue conflicts; other venues and cancelled bookings 
   assert.equal(m.has('d'), false);
 });
 
+test('time-ordered pruning preserves results for diverse buffers and dates', () => {
+  const sampleVenues = [{ id: 'a', bufferHours: 3 }, { id: 'b', bufferHours: 0 }, { id: 'whole', coversAllVenues: true, bufferHours: 8 }];
+  const rows = Array.from({ length: 180 }, (_, i) => {
+    const start = Date.parse('2026-01-01T00:00:00Z') + ((i * 197) % 700) * 3600000;
+    return { id: String(i), venueId: sampleVenues[i % 3].id, status: 'confirmed', startAt: new Date(start).toISOString(), endAt: new Date(start + (i % 7 + 1) * 3600000).toISOString() };
+  });
+  const result = computeAllConflicts(rows, sampleVenues);
+  const expected = new Map(rows.map(e => [e.id, []]));
+  const byId = new Map(sampleVenues.map(v => [v.id, v]));
+  for (let i = 0; i < rows.length; i++) for (let j = i + 1; j < rows.length; j++) {
+    const a = rows[i], b = rows[j], av = byId.get(a.venueId), bv = byId.get(b.venueId);
+    const overlap = (x, y, hours) => Date.parse(x.startAt) < Date.parse(y.endAt) + hours * 3600000 && Date.parse(x.endAt) > Date.parse(y.startAt);
+    if ((a.venueId === b.venueId || av.coversAllVenues || bv.coversAllVenues) &&
+      (overlap(a, b, bv.bufferHours || 0) || overlap(b, a, av.bufferHours || 0))) {
+      expected.get(a.id).push(b.id); expected.get(b.id).push(a.id);
+    }
+  }
+  for (const row of rows) assert.deepEqual([...result.get(row.id)].sort(), expected.get(row.id).sort());
+});

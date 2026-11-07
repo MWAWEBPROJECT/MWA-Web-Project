@@ -1,6 +1,6 @@
 ﻿const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateImportRows, normaliseDate, resolveHijriDate } = require('./bookingImport');
+const { validateImportRows, normaliseDate, resolveHijriDate, importIds, completeImport } = require('./bookingImport');
 const { adjustedGregorianToIslamic } = require('./hijriService');
 const { toOrgTimeParts } = require('./dateUtils');
 
@@ -9,6 +9,35 @@ const ctx = (extra = {}) => ({
   existingById: {}, existingKeys: new Set(), hijriOverrides: [], ...extra
 });
 const row = (o) => ({ Title: 'T', Department: 'Youth', Venue: 'Main Hall', Start: '10:30', End: '15:00', ...o });
+
+test('import completion reports uncertain saves safely at each failing stage', async () => {
+  for (const fail of ['commit', 'conflict-refresh', 'summary-audit']) {
+    const calls = [], logs = [];
+    const step = stage => async () => {
+      calls.push(stage);
+      if (stage === fail) throw Object.assign(new Error('private underlying failure'), { code: 3 });
+    };
+    await assert.rejects(completeImport({
+      commit: step('commit'), refresh: step('conflict-refresh'), audit: step('summary-audit'),
+      logError: details => logs.push(details)
+    }), error => error.code === 'internal' && /may already have been saved/.test(error.message) && !error.message.includes('private'));
+    assert.deepEqual(logs, [{ stage: fail, code: 3, type: 'Error' }]);
+    assert.deepEqual(calls, ['commit', 'conflict-refresh', 'summary-audit'].slice(0, calls.length));
+    assert.equal(calls.at(-1), fail);
+  }
+  const calls = [];
+  await completeImport({
+    commit: async () => calls.push('commit'), refresh: async () => calls.push('refresh'),
+    audit: async () => calls.push('audit'), logError: () => assert.fail('unexpected error')
+  });
+  assert.deepEqual(calls, ['commit', 'refresh', 'audit']);
+  const logs = [];
+  await assert.rejects(completeImport({
+    commit: async () => { throw Object.assign(new Error('private'), { code: 'private value with spaces' }); },
+    refresh: async () => {}, audit: async () => {}, logError: details => logs.push(details)
+  }));
+  assert.deepEqual(logs, [{ stage: 'commit', code: null, type: 'Error' }]);
+});
 
 test('dd/mm/yyyy is day-first: 05/10/2026 is 5 October, never 10 May', () => {
   assert.equal(normaliseDate('05/10/2026'), '2026-10-05');
@@ -67,4 +96,8 @@ test('legacy ISO dates still accepted for Gregorian rows', () => {
 test('error message names the DD/MM/YYYY format', () => {
   const r = validateImportRows([row({ Date: 'tomorrow' })], ctx());
   assert.match(r.errors[0].message, /DD\/MM\/YYYY/);
+});
+
+test('importIds accepts workbook header variants and returns unique bounded IDs', () => {
+  assert.deepEqual(importIds([{ ID: ' event-1 ' }, { booking_id: 'event-1' }, { Id: 'bad/id' }, { Title: 'no id' }]), ['event-1']);
 });

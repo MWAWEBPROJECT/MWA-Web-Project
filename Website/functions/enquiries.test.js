@@ -7,11 +7,17 @@ test('public form validates input, honeypot and idempotency key',()=>{
 });
 test('incoming mail suppresses loops and flags mismatched/failed-auth senders',()=>{
  const thread={email:'visitor@example.com',status:'resolved'};
- const msg=(from,headers=[],labelIds=[])=>({labelIds,payload:{headers:[{name:'From',value:from},...headers]}});
+ const aligned={name:'Authentication-Results',value:'mx.google.com; spf=pass smtp.mailfrom=example.com; dkim=pass header.i=@example.com; dmarc=pass header.from=example.com'};
+ const msg=(from,headers=[aligned],labelIds=[])=>({labelIds,payload:{headers:[{name:'From',value:from},...headers]}});
  assert.equal(C.inboundDecision(thread,msg('Visitor <visitor@example.com>')),'accept');
  assert.equal(C.inboundDecision({...thread,status:'spam'},msg(thread.email)),'suppressed');
  assert.equal(C.inboundDecision(thread,msg('other@example.com')),'review');
  assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Authentication-Results',value:'mx.google.com; dmarc=fail'}])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Authentication-Results',value:'mx.google.com; dmarc=neutral header.from=example.com'}])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Authentication-Results',value:'attacker.example; dmarc=pass header.from=example.com'}])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Authentication-Results',value:'mx.google.com; dmarc=pass header.from=attacker.example'}])),'review');
+ assert.equal(C.inboundDecision(thread,msg(thread.email,[aligned,{name:'Authentication-Results',value:'mx.google.com; dmarc=pass header.from=example.com'}])),'review');
  assert.equal(C.inboundDecision(thread,msg(C.OWNER)),'ignore');
  assert.equal(C.inboundDecision(thread,msg(thread.email,[{name:'Auto-Submitted',value:'auto-replied'}])),'ignore');
  assert.equal(C.inboundDecision(thread,msg(thread.email,[],['SENT'])),'ignore');
@@ -32,8 +38,9 @@ test('server workflow transactions and mail reconciliation', {skip:!process.env.
  const {initializeApp,deleteApp}=require('firebase-admin/app'),{getFirestore}=require('firebase-admin/firestore');
  const A=require('./enquiries-api'),G=require('./enquiries-gmail');
  const app=initializeApp({projectId:'demo-mwa-enquiries'},'enquiry-tests'),db=getFirestore(app);
+ await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/emulator/v1/projects/demo-mwa-enquiries/databases/(default)/documents`,{method:'DELETE'});
  const visitor={name:'Test visitor',email:'visitor@example.com',message:'Please share membership information.',topic:'Membership',requestId:'idempotency-test-1234'};
- const actor={uid:'team-admin',email:'team@example.com',name:'Team Admin',firebase:{sign_in_provider:'google.com'}};
+ const actor={email_verified:true,uid:'team-admin',email:'team@example.com',name:'Team Admin',firebase:{sign_in_provider:'google.com'}};
  const input={...visitor};const id=C.hash('submission:'+visitor.requestId).slice(0,32),ref=db.doc('enquiries/'+id);
  const originalFetch=global.fetch;
  try{
@@ -44,8 +51,8 @@ test('server workflow transactions and mail reconciliation', {skip:!process.env.
   await assert.rejects(A.submit(db,{...input,requestId:'rate-test-key-9999'},'test-ip'),e=>e.status===429);
   const req={get:()=> 'Bearer valid'},auth=()=>({verifyIdToken:async()=>actor});
   await assert.rejects(A.adminFor(req,db,auth),e=>e.status===403);
-  await db.doc('users/'+actor.uid).set({role:'admin'});await assert.rejects(A.adminFor(req,db,auth),e=>e.status===403);
-  await db.doc('adminAllowlist/'+actor.email).set({});assert.equal((await A.adminFor(req,db,auth)).uid,actor.uid);
+  await db.doc('users/'+actor.uid).set({role:'admin',email:actor.email});await assert.rejects(A.adminFor(req,db,auth),e=>e.status===403);
+  await db.doc('adminAllowlist/'+actor.email).set({uid:actor.uid});assert.equal((await A.adminFor(req,db,auth)).uid,actor.uid);
   await db.doc('calendarSettings/auth').set({passwordLoginDisabled:true});
   await assert.rejects(A.adminFor(req,db,()=>({verifyIdToken:async()=>({...actor,firebase:{sign_in_provider:'password'}})})),e=>e.status===403);
   const reply={body:'Thank you for contacting MWA.',kind:'reply',version:1,requestId:'reply-idempotency-1234'};
@@ -56,7 +63,7 @@ test('server workflow transactions and mail reconciliation', {skip:!process.env.
   await G.deliver(db,'fake-token',job);assert.equal(sends,1);assert.equal((await job.ref.get()).data().status,'sent');assert.equal((await ref.get()).data().pendingReplyId,null);
   await G.deliver(db,'fake-token',job);assert.equal(sends,1);
   let thread=(await ref.get()).data();await A.updateThread(db,id,{action:'status',status:'resolved',version:thread.version},actor);
-  const inbound={id:'incoming1',threadId:'gmailThread1',internalDate:String(Date.now()),payload:{mimeType:'text/plain',headers:[{name:'From',value:visitor.email}],body:{data:Buffer.from('Thank you. One more question.').toString('base64url')}}};
+  const inbound={id:'incoming1',threadId:'gmailThread1',internalDate:String(Date.now()),payload:{mimeType:'text/plain',headers:[{name:'From',value:visitor.email},{name:'Authentication-Results',value:'mx.google.com; dmarc=pass header.from=example.com'}],body:{data:Buffer.from('Thank you. One more question.').toString('base64url')}}};
   await G.importMessage(db,inbound);await G.importMessage(db,inbound);thread=(await ref.get()).data();assert.equal(thread.status,'new');assert.equal((await ref.collection('messages').get()).size,3);assert.equal((await db.doc('enquiryOutbox/incoming_incoming1').get()).exists,true);
   await A.updateThread(db,id,{action:'status',status:'spam',version:thread.version},actor);
   await G.importMessage(db,{...inbound,id:'incoming2'});assert.equal((await db.doc('enquiryOutbox/incoming_incoming2').get()).exists,false);assert.equal((await ref.get()).data().status,'spam');

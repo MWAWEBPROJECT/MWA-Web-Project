@@ -20,14 +20,16 @@ function accessActive(entry,now=Date.now()){
 function hasModule(email,entry,id){return ids.has(id)&&(normalizeEmail(email)===OWNER_EMAIL||(accessActive(entry)&&effectiveModules(entry).includes(id)));}
 async function resolveAdmin(db,uid,token,moduleId=null){
  const email=normalizeEmail(token?.email);
- if(!uid||!email)return null;
+ if(!uid||!email||token.email_verified!==true)return null;
  const [user,listed,settings]=await Promise.all([db.doc('users/'+uid).get(),db.doc('adminAllowlist/'+email).get(),db.doc('calendarSettings/auth').get()]);
- if(!user.exists||user.data().role!=='admin'||(!listed.exists&&email!==OWNER_EMAIL))return null;
+ const profile=user.exists?user.data():null,entry=listed.exists?listed.data():null;
+ if(!profile||profile.role!=='admin'||normalizeEmail(profile.email)!==email||(!listed.exists&&email!==OWNER_EMAIL))return null;
  if(!sessionAllowed({provider:token.firebase?.sign_in_provider||'',passwordLoginDisabled:settings.exists&&settings.data().passwordLoginDisabled===true}))return null;
- // Retain trusted legacy password accounts, but never trust an unverified owner identity.
+ const legacyIdentity=token.email_verified!==true&&email!==OWNER_EMAIL&&entry?.uid===uid;
+ if(token.email_verified!==true&&!legacyIdentity)return null;
  if(email===OWNER_EMAIL&&token.email_verified!==true)return null;
- if(email!==OWNER_EMAIL&&!accessActive(listed.data()))return null;
- if(moduleId!==null&&!hasModule(email,listed.exists?listed.data():null,moduleId))return null;
- return {uid,email,modules:email===OWNER_EMAIL?modules.map(m=>m.id):effectiveModules(listed.data())};
+ if(email!==OWNER_EMAIL&&(entry?.uid!==uid||!accessActive(entry)))return null;
+ if(moduleId!==null&&!hasModule(email,entry,moduleId))return null;
+ return {uid,email,modules:email===OWNER_EMAIL?modules.map(m=>m.id):effectiveModules(entry)};
 }
 module.exports={validateModules,effectiveModules,hasModule,resolveAdmin,accessActive};

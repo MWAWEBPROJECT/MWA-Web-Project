@@ -74,14 +74,6 @@
       "gallery_caption_2": "Kemps Creek archive",
       "panel_program_title": "Today’s programme",
       "panel_program_body": "Make time for faith, learning and community. Explore the calendar for your next gathering.",
-      "panel_news_title": "From our community.",
-      "panel_news_body": "Reflections, gatherings and community moments, shared through MWA’s social channels.",
-      "panel_news_item_1": "Reflecting on life and faith",
-      "panel_news_excerpt_1": "A spiritual reflection from the MWA social feed.",
-      "panel_news_url_1": "https://www.facebook.com/1576466691176076",
-      "panel_news_item_2": "An evening of Dua Kumail",
-      "panel_news_excerpt_2": "Prayer and reflection, together as a community.",
-      "panel_news_url_2": "https://www.facebook.com/1575603434595735",
       "tutoring_eyebrow": "Confidence through learning",
       "tutoring_title": "MWA Tutoring",
       "tutoring_body": "Connect with MWA about tutoring opportunities and learning support for your family."
@@ -596,62 +588,6 @@
       "label": "Today programme · introduction",
       "kind": "text",
       "long": true
-    },
-    {
-      "key": "panel_news_title",
-      "group": "Today panels & social news",
-      "label": "Social news · heading",
-      "kind": "text",
-      "long": false
-    },
-    {
-      "key": "panel_news_body",
-      "group": "Today panels & social news",
-      "label": "Social news · introduction",
-      "kind": "text",
-      "long": true
-    },
-    {
-      "key": "panel_news_item_1",
-      "group": "Today panels & social news",
-      "label": "Social news · first story title",
-      "kind": "text",
-      "long": false
-    },
-    {
-      "key": "panel_news_excerpt_1",
-      "group": "Today panels & social news",
-      "label": "Social news · first story summary",
-      "kind": "text",
-      "long": true
-    },
-    {
-      "key": "panel_news_url_1",
-      "group": "Today panels & social news",
-      "label": "Social news · first story link",
-      "kind": "url",
-      "long": false
-    },
-    {
-      "key": "panel_news_item_2",
-      "group": "Today panels & social news",
-      "label": "Social news · second story title",
-      "kind": "text",
-      "long": false
-    },
-    {
-      "key": "panel_news_excerpt_2",
-      "group": "Today panels & social news",
-      "label": "Social news · second story summary",
-      "kind": "text",
-      "long": true
-    },
-    {
-      "key": "panel_news_url_2",
-      "group": "Today panels & social news",
-      "label": "Social news · second story link",
-      "kind": "url",
-      "long": false
     },
     {
       "key": "tutoring_eyebrow",

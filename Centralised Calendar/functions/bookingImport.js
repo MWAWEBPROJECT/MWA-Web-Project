@@ -4,6 +4,7 @@
 const { localToUtcIso, toOrgTimeParts } = require('./dateUtils');
 const { adjustedIslamicToGregorian, getHijriMonthLength } = require('./hijriService');
 const { sanitizePrayer, resolvePrayerInstants, PRAYER_OPTIONS } = require('./prayerTimes');
+const { HttpsError } = require('firebase-functions/v2/https');
 
 const MAX_IMPORT_ROWS = 500;
 const STATUSES = ['pending', 'confirmed', 'rejected', 'cancelled'];
@@ -38,6 +39,12 @@ function normaliseHeaders(row) {
     if (key) out[key] = v;
   }
   return out;
+}
+
+function importIds(rawRows) {
+  return [...new Set((Array.isArray(rawRows) ? rawRows : [])
+    .map(row => cleanText(normaliseHeaders(row).id, 40))
+    .filter(id => /^[A-Za-z0-9_-]{1,40}$/.test(id)))];
 }
 
 /**
@@ -262,6 +269,24 @@ function validateImportRows(rawRows, ctx) {
   return { rows, errors, counts };
 }
 
+async function completeImport({ commit, refresh, audit, logError }) {
+  let stage = 'commit';
+  try {
+    await commit();
+    stage = 'conflict-refresh';
+    await refresh();
+    stage = 'summary-audit';
+    await audit();
+  } catch (error) {
+    const code = typeof error?.code === 'number' && Number.isFinite(error.code)
+      ? error.code
+      : typeof error?.code === 'string' && /^[a-z0-9._/-]{1,64}$/i.test(error.code) ? error.code : null;
+    const type = typeof error?.name === 'string' && /^[a-z0-9._-]{1,64}$/i.test(error.name) ? error.name : 'Error';
+    logError({ stage, code, type });
+    throw new HttpsError('internal', 'Import could not be confirmed. Some or all bookings may already have been saved. Check Bookings before importing this file again.');
+  }
+}
+
 module.exports = {
-  validateImportRows, normaliseDate, resolveHijriDate, normaliseTime, cleanText, MAX_IMPORT_ROWS
+  validateImportRows, normaliseDate, resolveHijriDate, normaliseTime, cleanText, importIds, MAX_IMPORT_ROWS, completeImport
 };

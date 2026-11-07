@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cleanFields,templateFields,FORM_TEMPLATES,makeField,validateAnswers,moveField} from './registration-model.mjs';
+import {cleanFields,cleanIntroduction,cleanIntroductionRuns,templateFields,FORM_TEMPLATES,makeField,validateAnswers,moveField} from './registration-model.mjs';
+test('form introductions preserve plain-text forms and accept only bounded bold runs',()=>{
+ assert.deepEqual(cleanIntroduction('  Existing introduction  '),{description:'Existing introduction',descriptionRuns:[{text:'Existing introduction',bold:false}]});
+ assert.deepEqual(cleanIntroduction('Welcome to MWA',[{text:'Welcome to ',bold:false},{text:'MWA',bold:true}]),{description:'Welcome to MWA',descriptionRuns:[{text:'Welcome to ',bold:false},{text:'MWA',bold:true}]});
+ assert.deepEqual(cleanIntroductionRuns([{text:' ',bold:false},{text:'Bold',bold:true},{text:' ',bold:false}]),[{text:'Bold',bold:true}]);
+ assert.throws(()=>cleanIntroduction('Different text',[{text:'Bold',bold:true}]));
+ assert.throws(()=>cleanIntroduction('x'.repeat(2001)));
+ assert.throws(()=>cleanIntroductionRuns([{text:'x'.repeat(2001),bold:false}]));
+ assert.throws(()=>cleanIntroductionRuns([{text:'<img src=x onerror=alert(1)>',bold:'yes'}]));
+ assert.throws(()=>cleanIntroductionRuns([{text:'x',bold:false,html:'<script>'}]));
+});
 test('builder preserves Community Connect field types, validates choices and keeps consent last',()=>{
  const consent={...makeField('consent','agreement'),terms:'Please agree to these terms.'};
  const choice={...makeField('checkboxes','choices'),required:true};

@@ -1,6 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {randomUUID}=require('node:crypto');
 const A=require('./registrations-api');
+const State=require('./insights-state');
 const site='https://refreshed.muhammadiwelfare.org.au';
 test('expiry is exclusive at the next Sydney midnight and unpublished forms are never open',()=>{
  const expiresAt='2027-04-04T14:00:00.000Z';
@@ -8,9 +9,36 @@ test('expiry is exclusive at the next Sydney midnight and unpublished forms are 
  assert.equal(A.open({published:true,expiresAt},Date.parse(expiresAt)),false);
  assert.equal(A.open({published:false,expiresAt},0),false);
 });
+test('form saves normalize legacy introductions and persist validated rich-text runs',async()=>{
+ const records=new Map(),db={
+  doc:path=>({path,id:path.split('/').at(-1)}),
+  collection:name=>({doc:()=>({path:name+'/'+randomUUID()})}),
+  runTransaction:work=>work({
+   get:async ref=>{const value=records.get(ref.path);return {exists:value!==undefined,data:()=>value};},
+   set:(ref,value)=>records.set(ref.path,value),
+   delete:ref=>records.delete(ref.path),
+   create:(ref,value)=>records.set(ref.path,value),
+  }),
+ };
+ const actor={uid:'forms-admin',email:'forms@example.com'},base={revision:0,title:'Community workshop',description:'Welcome everyone',purpose:'Arrange the workshop.',expiryDate:'2027-04-04',eventId:'',published:true,fields:[{id:'name',type:'text',label:'Full name',required:true,description:''}]};
+ const runs=[{text:'Welcome ',bold:false},{text:'everyone',bold:true}],id=randomUUID();
+ const saved=await A.save(db,id,{...base,descriptionRuns:runs},actor);
+ assert.deepEqual(saved.form.descriptionRuns,runs);
+ assert.equal(saved.form.description,'Welcome everyone');
+ assert.deepEqual(records.get('registrationListings/'+id).descriptionRuns,runs);
+ const legacy=await A.save(db,randomUUID(),{...base,description:'  Plain text  ',published:false},actor);
+ assert.equal(legacy.form.description,'Plain text');
+ assert.deepEqual(legacy.form.descriptionRuns,[{text:'Plain text',bold:false}]);
+ assert.equal(Object.hasOwn(legacy.form,'poster'),false);
+ const noPoster=await A.save(db,randomUUID(),{...base,posterSize:'large',posterAlt:'Unused',published:true},actor);
+ assert.equal(Object.hasOwn(noPoster.form,'poster'),false);
+ assert.equal(Object.hasOwn(records.get('registrationListings/'+noPoster.form.id),'poster'),false);
+ await assert.rejects(A.save(db,randomUUID(),{...base,descriptionRuns:[{text:'Welcome everyone',bold:true,html:'<script>'}]},actor),error=>error.status===400);
+});
 test('Form Builder API persistence, permission isolation, expiry, idempotency and paging',{skip:!process.env.FIRESTORE_EMULATOR_HOST},async t=>{
  const {initializeApp,deleteApp}=require('firebase-admin/app'),{getFirestore}=require('firebase-admin/firestore');
  const app=initializeApp({projectId:'demo-mwa-registrations'},'registration-tests'),db=getFirestore(app);
+ await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/emulator/v1/projects/demo-mwa-registrations/databases/(default)/documents`,{method:'DELETE'});
  const actor={uid:'forms-admin',email:'forms@example.com'},token={...actor,email_verified:true,firebase:{sign_in_provider:'google.com'}};
  const getAuth=()=>({verifyIdToken:async()=>token});
  const origins=new Set([site]);
@@ -22,34 +50,44 @@ test('Form Builder API persistence, permission isolation, expiry, idempotency an
   return {status,value};
  }
  try{
-  await db.doc('users/'+actor.uid).set({role:'admin'});
-  const team=db.doc('adminAllowlist/'+actor.email);await team.set({modules:['form-builder']});
+  await db.doc('users/'+actor.uid).set({role:'admin',email:actor.email});
+  const team=db.doc('adminAllowlist/'+actor.email);await team.set({uid:actor.uid,modules:['form-builder']});
   await t.test('module access is independent of CMS and legacy access; expired and revoked sessions fail',async()=>{
    assert.equal((await route('/admin')).status,401);
    for(const entry of [{modules:['website-cms']},{},{modules:[]},{modules:['form-builder'],accessExpiresAt:new Date(0)}]){
-    await team.set(entry);assert.equal((await route('/admin','GET',null,true)).status,403);
+    await team.set({uid:actor.uid,...entry});assert.equal((await route('/admin','GET',null,true)).status,403);
    }
-   await team.set({modules:['form-builder']});assert.equal((await route('/admin','GET',null,true)).status,200);
+   await team.set({uid:actor.uid,modules:['form-builder']});assert.equal((await route('/admin','GET',null,true)).status,200);
   });
   const id=randomUUID();
   await t.test('required expiry, DST conversion and draft/public separation',async()=>{
    for(const patch of [{expiryDate:''},{expiryDate:'2027-02-30'},{expiryDate:'2020-01-01',published:true}]){
     await assert.rejects(A.save(db,id,{...input,...patch},actor),error=>error.status===400);
    }
-   const draft=await A.save(db,id,input,actor);assert.equal(draft.form.expiresAt,'2027-04-04T14:00:00.000Z');
+   const formsGenerationBefore=await State.readFormsGeneration(db),draft=await A.save(db,id,input,actor);assert.equal(draft.form.expiresAt,'2027-04-04T14:00:00.000Z');assert.equal(await State.readFormsGeneration(db),formsGenerationBefore+1);
+   assert.deepEqual(draft.form.descriptionRuns,[{text:'Join us',bold:false}]);
    assert.equal((await db.doc('registrationListings/'+id).get()).exists,false);
    assert.equal((await route('/'+id)).status,410);
    await A.save(db,id,{...draft.form,published:true},actor);
    const publicForm=await route('/'+id);assert.equal(publicForm.status,200);assert.equal(publicForm.value.form.updatedBy,undefined);
    assert.equal(publicForm.value.form.published,undefined);
+   assert.deepEqual(publicForm.value.form.descriptionRuns,[{text:'Join us',bold:false}]);
    assert.equal((await route()).value.items.some(row=>row.id===id),true);
    await assert.rejects(A.save(db,id,{...input,published:true},actor),error=>error.status===409);
+   const richId=randomUUID(),richRuns=[{text:'Please ',bold:false},{text:'join us',bold:true}];
+   const rich=await A.save(db,richId,{...input,title:'Formatted introduction',description:'Please join us',descriptionRuns:richRuns},actor);
+   assert.deepEqual(rich.form.descriptionRuns,richRuns);
+   await A.save(db,richId,{...rich.form,published:true},actor);
+   assert.deepEqual((await route('/'+richId)).value.form.descriptionRuns,richRuns);
+   await assert.rejects(A.save(db,randomUUID(),{...input,description:'Mismatch',descriptionRuns:richRuns},actor),error=>error.status===400);
    const summer=await A.save(db,randomUUID(),{...input,expiryDate:'2027-01-15'},actor);assert.equal(summer.form.expiresAt,'2027-01-15T13:00:00.000Z');
   });
   await t.test('anonymous submission validates answers, preserves snapshots and deduplicates concurrent retries',async()=>{
    const response={revision:2,requestId:randomUUID(),answers:{name:'Synthetic Visitor'}};
+   const sourceVersionRef=State.versionRef(db,'source',id),sourceGenerationBefore=(await sourceVersionRef.get()).data()?.generation||0;
    const results=await Promise.all([A.submit(db,id,response,'test'),A.submit(db,id,response,'test')]);
    assert.equal(results[0].reference,results[1].reference);
+   assert.equal((await sourceVersionRef.get()).data().generation,sourceGenerationBefore+1);
    const rows=await db.collection('registrationForms/'+id+'/responses').get();assert.equal(rows.size,1);
    await assert.rejects(A.submit(db,id,{...response,answers:{name:'Other'}},'test'),error=>error.status===409);
    for(const patch of [{revision:1},{answers:{name:''}},{answers:{name:'Visitor',unknown:'value'}},{website:'bot'}]){
@@ -112,9 +150,9 @@ test('Form Builder API persistence, permission isolation, expiry, idempotency an
     assert.equal((await route(path+'/responses?asOf='+cutoff,'GET',null,true)).status,400);
    }
    assert.equal((await route(path+'/export','POST',{asOf,count:55})).status,401);
-   await team.set({modules:['website-cms']});
+   await team.set({uid:actor.uid,modules:['website-cms']});
    assert.equal((await route(path+'/export','POST',{asOf,count:55},true)).status,403);
-   await team.set({modules:['form-builder']});
+   await team.set({uid:actor.uid,modules:['form-builder']});
    assert.equal((await route(path+'/export','POST',{asOf,count:20001},true)).status,400);
    assert.equal((await route(path+'/export','POST',{asOf,count:55,filtered:true},true)).status,200);
    const audit=await db.collection('auditLog').where('action','==','registration.export_prepared').get();
@@ -126,11 +164,12 @@ test('Form Builder API persistence, permission isolation, expiry, idempotency an
    const submission={revision:1,requestId:randomUUID(),answers:{name:'Original visitor',consent:true}};
    const receipt=await A.submit(db,formId,submission,'edit-test');
    const collection=db.collection('registrationForms/'+formId+'/responses'),original=(await collection.get()).docs[0],path='/admin/'+formId+'/responses/'+original.id;
+   const sourceVersionRef=State.versionRef(db,'source',formId),sourceGenerationBefore=(await sourceVersionRef.get()).data().generation;
    const correction={editRevision:0,answers:{name:'Corrected visitor',consent:true}};
    assert.equal((await route(path,'PUT',correction)).status,401);
-   await team.set({modules:['website-cms']});assert.equal((await route(path,'PUT',correction,true)).status,403);
-   await team.set({modules:['form-builder'],accessExpiresAt:new Date(0)});assert.equal((await route(path,'PUT',correction,true)).status,403);
-   await team.set({modules:['form-builder']});
+   await team.set({uid:actor.uid,modules:['website-cms']});assert.equal((await route(path,'PUT',correction,true)).status,403);
+   await team.set({uid:actor.uid,modules:['form-builder'],accessExpiresAt:new Date(0)});assert.equal((await route(path,'PUT',correction,true)).status,403);
+   await team.set({uid:actor.uid,modules:['form-builder']});
    assert.equal((await route(path,'PUT',correction,true,'https://other.invalid')).status,403);
    for(const answers of [{name:'Corrected visitor',consent:false},{name:'Corrected visitor'},{name:'',consent:true},{name:'Corrected visitor',consent:true,unknown:'new'}]){
     assert.equal((await route(path,'PUT',{editRevision:0,answers},true)).status,400);
@@ -141,7 +180,7 @@ test('Form Builder API persistence, permission isolation, expiry, idempotency an
    assert.equal((await route(path,'PUT',correction,true)).status,409);
    assert.equal((await route(path,'PUT',{editRevision:1,answers:{name:'Second correction',consent:true}},true)).status,200);
    const current=(await original.ref.get()).data();
-   assert.deepEqual(current.originalAnswers,submission.answers);assert.equal(current.answers.name,'Second correction');
+   assert.deepEqual(current.originalAnswers,submission.answers);assert.equal(current.answers.name,'Second correction');assert.equal((await sourceVersionRef.get()).data().generation,sourceGenerationBefore+2);
    assert.equal(current.createdAt,original.data().createdAt);assert.equal(current.reference,receipt.reference);
    assert.deepEqual(current.fields,original.data().fields);assert.equal(current.digest,original.data().digest);assert.equal(current.editedBy,actor.uid);
    assert.equal((await A.submit(db,formId,submission,'edit-test')).reference,receipt.reference);

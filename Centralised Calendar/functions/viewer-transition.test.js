@@ -1,0 +1,6 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+test('only Super Admin can promote a volunteer and promotion retires the old grant',{skip:!process.env.FIRESTORE_EMULATOR_HOST},async()=>{
+ const {initializeApp,deleteApp}=require('firebase-admin/app'),{getFirestore}=require('firebase-admin/firestore'),{HttpsError}=require('firebase-functions/v2/https');const app=initializeApp({projectId:'demo-mwa-transition'},'transition'),db=getFirestore(app),email='volunteer@example.invalid';let actor={uid:'ordinary',email:'ordinary@example.invalid'};
+ const f=require('./teamPermissions').register({db,HttpsError,onCall:(opts,fn)=>fn,requireAdmin:async()=>actor});const request={data:{email,modules:['events-bookings'],expiryDate:null},auth:{}};
+ try{await db.doc('_responseViewers/'+email).set({revoked:false,revision:1,eventId:'event-one',formIds:['a'],fields:{a:['name']},expiresAt:'2027-01-01'});await assert.rejects(f.addAdminEmail(request),/Super Admin/);actor={uid:'super',email:'admin@muhammadiwelfare.org.au'};await f.addAdminEmail(request);assert.equal((await db.doc('_responseViewers/'+email).get()).data().revoked,true);assert.deepEqual((await db.doc('adminAllowlist/'+email).get()).data().modules,['events-bookings']);}finally{await db.terminate();await deleteApp(app);}
+});

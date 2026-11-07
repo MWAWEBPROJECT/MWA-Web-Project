@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import {auth} from '../firebase/firebase.js';
+import {onAuthStateChanged} from 'firebase/auth';
+import {normalizeBookingPhone} from '../services/phoneBookingAuth.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { HIJRI_MONTHS, hijriToGregorian, getHijriParts, getTodayHijriParts } from '../services/hijriService.js';
 import { localToUtcIso, formatInOrgTz, dateKeyInOrgTz, timeKeyInOrgTz } from '../utils/dateUtils.js';
 import { adjustPublicBookingStart, earliestAllowedPublicStart, MIN_PUBLIC_LEAD_HOURS } from '../utils/publicLeadTime.js';
 import {
   submitBooking, decideBooking, updateBookingScoped, createRecurringBooking, deleteBooking,
-  checkSlotConflicts, previewRecurringBooking
+  checkSlotConflicts, previewRecurringBooking, startBookingVerification,
+  verifyBookingEmailCode, verifyBookingMobile
 } from '../services/eventsService.js';
+import { clearBookingPhoneRecaptcha, confirmBookingPhoneCode, sendBookingPhoneCode } from '../services/phoneBookingAuth.js';
 import {
   PRAYER_OPTIONS, MAX_OFFSET_MINUTES, calculatePrayerTimes, prayerLabel, applyPrayerOffset, resolvePrayerSchedule
 } from '../utils/prayerTimes.js';
@@ -46,9 +51,14 @@ const fmtRange = (s, e) => `${formatInOrgTz(s, { weekday: 'short', day: 'numeric
 
 const DEFAULT_REPEAT = { on: false, frequency: 'week', repeatEvery: 1, endMode: 'count', count: 10, endDate: '', status: 'confirmed' };
 
-function BookingModalInner({
+export function BookingModalInner({
   open, onClose, venues, departments, editing: selectedBooking, isAdmin, hijriOverrides, onSaved, initialDate
 }) {
+  const [sessionUser,setSessionUser]=useState(auth.currentUser);
+  useEffect(()=>onAuthStateChanged(auth,setSessionUser),[]);
+  const authenticated=!!sessionUser&&!sessionUser.isAnonymous&&(sessionUser.emailVerified||!!sessionUser.phoneNumber);
+  const needsVerification=!isAdmin&&!authenticated;
+  useEffect(()=>()=>clearBookingPhoneRecaptcha(),[]);
   // The selected list item is a snapshot and may disappear from its filtered list after a decision.
   const [savedBooking, setSavedBooking] = useState(null);
   const editing = savedBooking || selectedBooking;
@@ -68,6 +78,19 @@ function BookingModalInner({
   const [conflictErr, setConflictErr] = useState('');
   const [preview, setPreview] = useState(null);
   const [protectionWarning, setProtectionWarning] = useState('');
+  const [verificationMethod, setVerificationMethod] = useState('email');
+  const [bookingVerification, setBookingVerification] = useState(null);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [resendAt, setResendAt] = useState(0);
+  const [resendClock, setResendClock] = useState(Date.now());
+  const [phoneConfirmation, setPhoneConfirmation] = useState(null);
+  const [phoneIdToken, setPhoneIdToken] = useState('');
+  const verificationSessionId = useRef(null);
+  if (!verificationSessionId.current) {
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    verificationSessionId.current = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
   // Admin-only MWA Programs extras saved in this dialog (the `editing` prop may lag the live snapshot).
   const [extras, setExtras] = useState(null);
   const [extrasSection, setExtrasSection] = useState(null);
@@ -78,7 +101,28 @@ function BookingModalInner({
     setErr(''); setOk(''); setLocked(false); setEditMode(false); setScope('single');
     setRep(DEFAULT_REPEAT); setConflict(null); setPreview(null);
     setProtectionWarning(''); setExtras(null); setExtrasSection(null);
+    setBookingVerification(null); setVerificationCode(''); setPhoneConfirmation(null); setPhoneIdToken('');
+    setResendAt(0);
+    setVerificationMethod('email'); clearBookingPhoneRecaptcha();
   }, [selectedBooking, open, initialDate, isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin) return;
+    setBookingVerification(null);
+    setVerificationCode('');
+    setResendAt(0);
+    setPhoneConfirmation(null);
+    setPhoneIdToken('');
+    clearBookingPhoneRecaptcha();
+  }, [verificationMethod, verificationMethod==='email'?form.contactEmail.trim().toLowerCase():form.contactPhone.replace(/[ ()-]/g,''), isAdmin]);
+
+  useEffect(() => {
+    if (!resendAt) return undefined;
+    const timer = setInterval(() => setResendClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [resendAt]);
+
+  useEffect(()=>{if(bookingVerification?.verified&&bookingVerification.expiresAt<=resendClock&&!locked){setBookingVerification(null);setVerificationCode('');setErr('Your contact verification expired. Request a new code; your booking details are saved in this form.');}},[resendClock,bookingVerification,locked]);
 
   const bookingTypes = useMemo(() => availableBookingTypes(departments, isAdmin), [departments, isAdmin]);
   useEffect(() => {
@@ -224,7 +268,151 @@ function BookingModalInner({
     startPrayer, endPrayer
   });
 
+  function publicBookingPayload() {
+    if (!range) throw new Error('Choose a valid booking date and time.');
+    return {
+      timeMode: form.timeMode,
+      title: form.title, departmentId: form.departmentId, venueId: form.venueId,
+      startAt: range.startAt, endAt: range.endAt,
+      dateBasis: form.basis,
+      hijriDate: form.basis === 'h' ? { day: Number(form.hDay), month: Number(form.hMonth), year: Number(form.hYear) } : null,
+      contactName: form.contactName, contactEmail: form.contactEmail, contactPhone: form.contactPhone,
+      notes: form.notes, visibility: form.visibility,
+      ...programPayload()
+    };
+  }
+
+  function chooseVerificationMethod(method) {
+    setVerificationMethod(method);
+    setBookingVerification(null);
+    setVerificationCode('');
+    setResendAt(0);
+    setPhoneConfirmation(null);
+    setPhoneIdToken('');
+    clearBookingPhoneRecaptcha();
+    setErr('');
+  }
+
+  async function startPublicVerification() {
+    setErr(''); setOk('');
+    setBusy(true);
+    try {
+      const contactPhone=verificationMethod==='mobile'?normalizeBookingPhone(form.contactPhone):form.contactPhone;
+      const challenge = await startBookingVerification({
+        method: verificationMethod,
+        sessionId: verificationSessionId.current,
+        contactEmail: form.contactEmail, contactPhone
+      });
+      setBookingVerification(challenge);
+      setResendAt(Date.now() + challenge.resendAfterMs);
+      setVerificationCode('');
+      setPhoneIdToken('');
+      if (verificationMethod === 'mobile') {
+        const phone = contactPhone;
+        setPhoneConfirmation(await sendBookingPhoneCode(phone));
+      }
+    } catch (error) {
+      setErr(error?.message || 'Could not start contact verification. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmPublicVerification() {
+    if (!bookingVerification) return;
+    setErr(''); setBusy(true);
+    try {
+      if (verificationMethod === 'email') {
+        await verifyBookingEmailCode({
+          challengeId: bookingVerification.challengeId,
+          code: verificationCode,
+          sessionId: verificationSessionId.current
+        });
+      } else {
+        let token = phoneIdToken;
+        if (!token) {
+          if (!phoneConfirmation) throw new Error('Request a mobile verification code first.');
+          token = await confirmBookingPhoneCode(phoneConfirmation, verificationCode);
+          setPhoneIdToken(token);
+          setPhoneConfirmation(null);
+        }
+        await verifyBookingMobile({
+          challengeId: bookingVerification.challengeId,
+          idToken: token,
+          sessionId: verificationSessionId.current
+        });
+      }
+      setBookingVerification(current => ({ ...current, verified: true }));
+      setPhoneIdToken('');
+      setOk('Contact verified. Submit your booking request to complete it.');
+    } catch (error) {
+      setErr(error?.message || 'The verification code could not be confirmed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const closeButton = <button type="button" className="dlg-close" onClick={onClose} aria-label="Close dialog">✕</button>;
+
+  if(!editing && !locked && needsVerification && (!bookingVerification?.verified || bookingVerification.expiresAt<=resendClock)) return (
+    <div className="overlay show"><div className="dlg" role="dialog" aria-modal="true" aria-labelledby="booking-verification-title">
+      {closeButton}<h3 id="booking-verification-title">Verify your contact</h3>
+              <div className="card" style={{ marginTop: 12 }}>
+                <p>First verify your email or mobile. Your booking details come next. No booking is submitted at this step.</p>
+                <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <input type="radio" name="booking-verification-method" style={{ width: 'auto' }} checked={verificationMethod === 'email'} onChange={() => chooseVerificationMethod('email')} />
+                    Verify by email
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <input type="radio" name="booking-verification-method" style={{ width: 'auto' }} checked={verificationMethod === 'mobile'} onChange={() => chooseVerificationMethod('mobile')} />
+                    Verify by mobile
+                  </label>
+                </div>
+                <div className="muted" style={{ marginTop: 8 }}>
+                  Only the selected contact is verified. Any other contact detail remains unverified. The code expires after 10 minutes.
+                </div>
+<label htmlFor="booking-contact">{verificationMethod==='email'?'Email address':'Mobile number'}</label>
+<input id="booking-contact" type={verificationMethod==='email'?'email':'tel'} autoComplete={verificationMethod==='email'?'email':'tel'} placeholder={verificationMethod==='email'?'you@example.com':'0412 345 678'} value={verificationMethod==='email'?form.contactEmail:form.contactPhone} disabled={busy} onChange={e=>set(verificationMethod==='email'?'contactEmail':'contactPhone',e.target.value)}/>
+{verificationMethod==='mobile'&&<p className="muted">Australian 04 numbers and international +61 numbers are accepted.</p>}
+                <div id="booking-phone-recaptcha" />
+                {bookingVerification && (
+                  <>
+                    <div className="muted" style={{ marginTop: 8 }}>
+                      Code sent to {bookingVerification.maskedContact}. Expires {new Date(bookingVerification.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. You can request another code after one minute.
+                    </div>
+                    {!bookingVerification.verified && (
+                      <>
+                        <label htmlFor="booking-verification-code">Verification code</label>
+                        <input
+                          id="booking-verification-code"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          maxLength={6}
+                          value={verificationCode}
+                          onChange={event => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                        />
+                        <button type="button" className="btn pri" disabled={busy || verificationCode.length !== 6} onClick={confirmPublicVerification}>
+                          Verify code
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+                {bookingVerification?.verified && <div className="ok" role="status">Contact verified. Submit your request below to finish.</div>}
+                {!bookingVerification?.verified && (
+                  <button type="button" className="btn" disabled={busy || resendClock < resendAt} onClick={startPublicVerification} style={{ marginTop: 8 }}>
+                  {bookingVerification
+                    ? resendClock < resendAt
+                      ? `Send a new code in ${Math.ceil((resendAt - resendClock) / 1000)} seconds`
+                      : 'Send a new code'
+                    : 'Send verification code'}
+                  </button>
+                )}
+              </div>
+      {err&&<div className="error" role="alert">{err}</div>}
+    </div></div>
+  );
 
   const showExtras = isAdmin && !!editing && isProgramType(departments, editing.departmentId);
   const extrasSummary = showExtras && (
@@ -365,17 +553,16 @@ function BookingModalInner({
       setErr(`Public bookings must start at least ${MIN_PUBLIC_LEAD_HOURS} hours from now. Please choose a later time.`);
       return;
     }
+    if (needsVerification && (!bookingVerification?.verified || bookingVerification.expiresAt<=Date.now())) {
+      setErr('Verify your selected email or mobile number before submitting the booking.');
+      return;
+    }
     setBusy(true);
     try {
-      const payload = {
-        timeMode: form.timeMode,
-        title: form.title, departmentId: form.departmentId, venueId: form.venueId,
-        startAt, endAt,
-        dateBasis: form.basis,
-        hijriDate: form.basis === 'h' ? { day: Number(form.hDay), month: Number(form.hMonth), year: Number(form.hYear) } : null,
-        contactName: form.contactName, contactEmail: form.contactEmail, contactPhone: form.contactPhone,
-        notes: form.notes, visibility: form.visibility,
-        ...programPayload()
+      const payload = !needsVerification ? publicBookingPayload() : {
+        ...publicBookingPayload(),
+        verificationChallengeId: bookingVerification.challengeId,
+        verificationSessionId: verificationSessionId.current
       };
       const res = await submitBooking(payload);
       setOk(res?.hasConflict
@@ -384,6 +571,7 @@ function BookingModalInner({
       setLocked(true);
       onSaved && onSaved();
     } catch (e2) {
+      if(needsVerification && /verification|verify|contact changed/i.test(e2?.message||'')){setBookingVerification(null);setVerificationCode('');}
       setErr(e2?.message || 'Could not submit the booking. Please try again.');
     } finally { setBusy(false); }
   }
@@ -620,10 +808,11 @@ function BookingModalInner({
 
             <div className="r2">
               <div><label>Contact name</label><input value={form.contactName} onChange={e => set('contactName', e.target.value)} required /></div>
-              <div><label>Contact email</label><input type="email" value={form.contactEmail} onChange={e => set('contactEmail', e.target.value)} required /></div>
+              <div><label>Contact email</label><input type="email" readOnly={needsVerification&&bookingVerification?.verified&&verificationMethod==='email'} value={form.contactEmail} onChange={e => set('contactEmail', e.target.value)} required={isAdmin || (needsVerification && verificationMethod === 'email')} /></div>
             </div>
-            <label>Contact phone (optional)</label>
-            <input value={form.contactPhone} onChange={e => set('contactPhone', e.target.value)} />
+            <label>Contact phone{!isAdmin && verificationMethod === 'mobile' ? '' : ' (optional)'}</label>
+            <input type="tel" readOnly={needsVerification&&bookingVerification?.verified&&verificationMethod==='mobile'} value={form.contactPhone} onChange={e => set('contactPhone', e.target.value)} required={!isAdmin && verificationMethod === 'mobile'} />
+            {needsVerification&&<p className="muted">Contact verified. <button type="button" className="btn" onClick={()=>{setBookingVerification(null);setVerificationCode('');}}>Change verified contact</button></p>}
             <label>Notes (optional)</label>
             <textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
 
@@ -760,7 +949,7 @@ function BookingModalInner({
             )}
             {!editing && (
               <>
-                <button className="btn pri" disabled={busy || locked || (repeating && !!preview)} type="submit">{repeating ? 'Preview series' : 'Submit request'}</button>
+                <button className="btn pri" disabled={busy || locked || (repeating && !!preview) || (needsVerification && !bookingVerification?.verified)} type="submit">{repeating ? 'Preview series' : 'Submit request'}</button>
                 <button className="btn" disabled={busy} type="button" onClick={clearForm}>Clear form</button>
               </>
             )}
