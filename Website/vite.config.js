@@ -1,4 +1,5 @@
 import {textSizeCss,textSizeHtml} from './text-size-css.mjs';
+import {embeddedImages} from './embedded-images.mjs';
 import {defineConfig} from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
@@ -6,4 +7,4 @@ import {existsSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url));
 const calendar=existsSync(path.join(root,'calendar-app/src'))?path.join(root,'calendar-app/src'):path.resolve(root,'../Centralised Calendar/src');
-export default defineConfig({define:{__MWA_BUILD_ID__:JSON.stringify(Date.now().toString(36))},root:path.join(root,'website'),envDir:root,plugins:[react(),textSizeHtml()],css:{postcss:{plugins:[textSizeCss()]}},resolve:{alias:{'@calendar':calendar,'@mwa/appearance':path.join(root,'shared/appearance.js'),'@mwa/access':path.join(root,'shared/module-access.js'),'@mwa/calendar-entry':path.join(root,'calendar-redirect/entry.js')},dedupe:['react','react-dom','firebase']},server:{host:'127.0.0.1',port:5174,proxy:{'/api':{target:'https://websitecmsapi-5s3kgiefba-ts.a.run.app',changeOrigin:true}},fs:{allow:[root,path.dirname(calendar)]}},build:{outDir:path.join(root,'dist'),emptyOutDir:true,chunkSizeWarningLimit:1000}});
+export default defineConfig({define:{__MWA_BUILD_ID__:JSON.stringify(Date.now().toString(36))},root:path.join(root,'website'),envDir:root,plugins:[react(),textSizeHtml(),embeddedImages()],css:{postcss:{plugins:[textSizeCss()]}},resolve:{alias:{'@calendar':calendar,'@mwa/appearance':path.join(root,'shared/appearance.js'),'@mwa/access':path.join(root,'shared/module-access.js'),'@mwa/calendar-entry':path.join(root,'calendar-redirect/entry.js')},dedupe:['react','react-dom','firebase']},server:{host:'127.0.0.1',port:5174,proxy:{'/api':{target:'https://websitecmsapi-5s3kgiefba-ts.a.run.app',changeOrigin:true}},fs:{allow:[root,path.dirname(calendar)]}},build:{outDir:path.join(root,'dist'),emptyOutDir:true,chunkSizeWarningLimit:1000}});
