@@ -3,7 +3,39 @@
 
 # MWA Web Project — Codex / Copilot handover
 
-Last updated: **9 November 2026, Australia/Sydney** by Copilot — local public Calendar payload improvement (not committed/pushed/deployed); approved response-card release completed separately as recorded below.
+Last updated: **9 November 2026, Australia/Sydney** by Copilot — public Calendar payload improvement released (Website Hosting only) and live-verified; App Check first-token wait identified as the remaining public-calendar delay.
+
+## Public Events & Bookings payload release — 9 November 2026, Australia/Sydney
+
+User approved commit, push and website-only deploy of the reviewed payload change below. Source commit `9553568fe227256befcd4f09e079d5c9c05ab986` ("Serve embedded website images as cacheable assets") was pushed to `origin/main`. Coordinator review before release: no `img-src` CSP exists in Hosting headers or meta tags. CMS runtime only writes the logo `src` from `config.logo` and never reads DOM image sources. Tests passed **23/23, zero skipped**; a fresh Website plus embedded Calendar build passed; emitted `dist/index.html` was 308,735 bytes with no data-URL `<img src>`.
+
+Pre-release rollback target, read from the live channel: release `1794205018500000` / version `f06cd4548ca6b1c0`. Deployed **only** `hosting:website` (`firebase deploy --only hosting:website --project project-7a4fb531-414f-4ade-88e --non-interactive`). New live release `1794205745547000` / version `5aa7d47bb211fe48` at 2026-11-09T06:29:05.547Z. No functions, rules, indexes, Calendar Hosting target, data or provider writes.
+
+Live verification (read-only, signed out):
+- `/calendar/`, `/` and `/admin-login` return 200, each 308,735 decoded bytes (162,241 transferred), with zero data-URL `<img>` tags. They reference `/assets/embedded-20a6a0890c8fc9cf.jpg`, `embedded-9250da517eca6727.jpg`, `embedded-b25c2b29b3a2917e.png` and `embedded-f237b2752a41d5cd.png`.
+- All four live images match the built bytes (sizes 39,523 / 68,863 / 490,247 / 135,406; SHA256 equal).
+- `/calendar-app/` returns 200.
+- The images are served with existing catch-all `Cache-Control: no-cache` plus ETag, so they revalidate (304) rather than being immutable-cached like hashed JS/CSS. Adding `png|jpg|webp` to the immutable rule in `Website/firebase.json` would be an optional, separately approved follow-up.
+
+Live timing, from the app Browser panel, clicking Events & Booking from `/admin-login` with cached JS (single samples, not benchmarks):
+- HTML responseEnd **846 → 301 ms**.
+- DCL **1043 → 348 ms**.
+- Calendar frame request **1028 → 341 ms**.
+- Frame FCP **~1714 → 1127 ms**.
+- Load **3141 → 1721 ms**.
+
+**Remaining public-calendar delay: App Check first token.** In the same sample `getPublicEvents` only started at ~5141 ms and ended at 5533 ms. The frame first waited for the reCAPTCHA Enterprise anchors (done ~1.7 s) and then for `exchangeRecaptchaEnterpriseToken` (started ~4872 ms). On reload with a valid cached App Check token there was no exchange, and `getPublicEvents` ran 1909–2134 ms. Headless Chromium samples showed the first-token wait much longer (events start 3.5–15.5 s), but headless reCAPTCHA timing is not representative of real users.
+
+The frame performs **two** reCAPTCHA anchors and **two** token exchanges per visit. Cause: `Centralised Calendar/src/services/phoneBookingAuth.js:11-12` creates a second named Firebase app with its own `initializeAppCheck`, alongside `src/firebase/firebase.js:10-12`.
+
+Candidate follow-ups, none implemented or approved:
+1. Initialise the phone-booking app/App Check lazily, only when phone verification starts.
+2. Review whether public read-only event listing must wait for App Check (security/abuse trade-off, e.g. a cached public events feed) — needs the user's decision.
+3. Optionally apply immutable caching for hashed images.
+
+Do not relax App Check without explicit approval.
+
+Earlier remaining costs still apply: the ~201k-character inline CMS script and initial Website JS. Authenticated production login, Events & Bookings after sign-in, and live response-card interaction remain unverified.
 
 ## Public Events & Bookings payload — 9 November 2026, Australia/Sydney
 
@@ -15,7 +47,7 @@ Coordinator's latest signed-out live sample (cached Website JS, not cold/control
 
 Affected local files: new `Website/embedded-images.mjs`, new `Website/website/embedded-images.test.mjs`, plugin registration in `Website/vite.config.js`, and this handover. Existing tests passed **21/21, zero skipped** for image equivalence, approved login handoff and module/render guards. The two new tests prove emitted binary equality/deterministic paths, unchanged CMS script tail and URL/non-image data, retained lazy attributes, and emitted HTML below 350,000 bytes. Fresh Website plus embedded Calendar build and generated-JS syntax checks passed with existing chunk warnings. Six local Chromium payload runs passed; server and Chromium closed in `finally`. No auth/security/data/booking/consent code, Hosting rewrites or source HTML changed; App Check stays enabled in both contexts, and fresh public calendar reads/error handling remain unchanged.
 
-Status: canonical `main` at pushed response-release documentation commit `ad7ad0ebedc92b9f8936324497254877543e70ec`; performance changes are **local/uncommitted/unpushed/undeployed**, explicitly outside the response-card release approval. Review diff and measurements are session artifacts, not a source checkout. `git diff --check` passed. Next: coordinator reviews the build-only payload change; any release needs separate approval, then compare actual public calendar-ready timings under controlled cache/network conditions. The experiment does not certify all production route/image/CDN acceptance or remove the remaining large CMS inline script/initial Website JS cost.
+Status (historical, before release — superseded by the release section above): canonical `main` at pushed response-release documentation commit `ad7ad0ebedc92b9f8936324497254877543e70ec`; performance changes are **local/uncommitted/unpushed/undeployed**, explicitly outside the response-card release approval. Review diff and measurements are session artifacts, not a source checkout. `git diff --check` passed. Next: coordinator reviews the build-only payload change; any release needs separate approval, then compare actual public calendar-ready timings under controlled cache/network conditions. The experiment does not certify all production route/image/CDN acceptance or remove the remaining large CMS inline script/initial Website JS cost.
 
 ## Expandable Form Builder responses — 9 November 2026, Australia/Sydney
 
