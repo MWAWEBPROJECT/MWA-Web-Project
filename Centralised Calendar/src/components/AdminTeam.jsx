@@ -4,10 +4,14 @@ import {OWNER_EMAIL,useAuth} from '../contexts/AuthContext.jsx';
 import {ADMIN_MODULES,effectiveModules,accessActive} from '@mwa/access';
 import {watchAdminTeam,addAdminEmail,removeAdminEmail,setAdminModules} from '../services/adminTeamService.js';
 import AdminAccessEditor from './AdminAccessEditor.jsx';
-export default function TeamTab({currentEmail,canManage}){
+export default function TeamTab({currentEmail,canManage,registerBack}){
  const session=useAuth();
  const canEdit=canManage&&session.isOwner;
  const [team,setTeam]=useState(null),[editing,setEditing]=useState(null),[busy,setBusy]=useState(''),[msg,setMsg]=useState(null);
+ useEffect(()=>{
+  registerBack?.(canEdit&&editing?{busy:!!busy,back:()=>{if(window.confirm('Discard unsaved admin access edits?'))setEditing(null);}}:null);
+  return()=>registerBack?.(null);
+ },[canEdit,editing,busy,registerBack]);
  useEffect(()=>watchAdminTeam(setTeam,()=>setMsg({err:true,text:'Could not load the admin list.'})),[]);
  useEffect(()=>{if(!canEdit)setEditing(null)},[canEdit]);
  const fmt=iso=>iso?new Date(iso).toLocaleString('en-AU',{timeZone:'Australia/Sydney',dateStyle:'medium',timeStyle:'short'}):'—';

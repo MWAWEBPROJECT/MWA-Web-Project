@@ -1,4 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
+import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
 import {auth} from '@calendar/firebase/firebase.js';
 import {useAuth} from '@calendar/contexts/AuthContext.jsx';
 import InsightsProgrammeFilters,{emptyProgrammeFilters} from './InsightsProgrammeFilters.jsx';
@@ -85,8 +86,8 @@ export default function InsightsDetail(){
   }finally{rows.length=0;blob=null;if(epoch.current===generation){operation.current='';setBusy(false);}}
  }
  if(session.loading)return <p>Checking admin access…</p>;
- if(!session.isAdmin)return <p>An active admin account is required.</p>;
- return <section className="admin-console form-builder"><h1>Scoped response details</h1><p><a href="/admin-login">Admin Console</a></p>
+ if(!session.isAdmin)return <section><AdminBackButton/><p>An active admin account is required.</p></section>;
+ return <section className="admin-console form-builder"><AdminBackButton onBack={selected?()=>setSelected(null):undefined}/><h1>Scoped response details</h1>
  <p>All answers and contact fields in the assigned scope are included. Consent snapshots remain read-only. This is separate from aggregate Insights, person search, and volunteer access.</p>
  <p>When both forms and events are selected, each response must match a selected form <strong>and</strong> its saved event ID. Event-only scope includes matching responses across forms. No current form-event link is substituted.</p>
  {error&&<p role="alert">{error}</p>}

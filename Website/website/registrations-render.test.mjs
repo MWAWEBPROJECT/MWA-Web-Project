@@ -11,12 +11,23 @@ const output=await build({stdin:{contents:`export {default as FormBuilder} from 
  builder.onResolve({filter:/^@calendar\/contexts\/AuthContext\.jsx$/},()=>({path:'auth',namespace:'fixture'}));
  builder.onResolve({filter:/^@calendar\/firebase\/firebase\.js$/},()=>({path:'firebase',namespace:'fixture'}));
  builder.onResolve({filter:/^@mwa\/access$/},()=>({path:path.resolve(root,'shared/module-access.js')}));
+ builder.onResolve({filter:/^@calendar\/components\/AdminBackButton\.jsx$/},()=>({path:path.resolve(root,'../Centralised Calendar/src/components/AdminBackButton.jsx')}));
  builder.onLoad({filter:/.*/,namespace:'fixture'},({path:p})=>({contents:p==='auth'?'export const useAuth=()=>globalThis.__formSession;':'export const auth={currentUser:null};',loader:'js'}));
  builder.onLoad({filter:/\.css$/},()=>({contents:'',loader:'js'}));
 }}]});
 const module={exports:{}};
 new Function('require','module','exports',output.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
 const {FormBuilder,AdminConsole,InsightsDetail,InsightsPeople,RegistrationFields,RegistrationShare,RegistrationPoster,Registrations,RegistrationIntroduction,RegistrationIntroductionEditor,EventCoverageTable,InsightsDrilldown,FormInsights,MappingScanControls,ChoiceChart,FirstKnownChart,YearOverYearChart}=module.exports;
+test('admin root and module pages render an accessible icon-only back control without redundant console links',()=>{
+ globalThis.__formSession={loading:false,isAdmin:true,isOwner:false,user:{uid:'fixture'},canAccess:()=>true};
+ try{
+  for(const Component of [AdminConsole,FormBuilder,FormInsights,InsightsPeople,InsightsDetail]){
+   const html=renderToStaticMarkup(React.createElement(Component,{email:'fixture@example.invalid'}));
+   assert.match(html,/class="mwa-admin-back"/);assert.match(html,/aria-label="(?:Go back|Back to Home)"/);
+   assert.doesNotMatch(html,/>Back to Admin Console<|>Admin Console<\/a>/);
+  }
+ }finally{delete globalThis.__formSession;}
+});
 test('year-over-year chart shows real values and handles partial or zero baselines',()=>{
  const html=renderToStaticMarkup(React.createElement(YearOverYearChart,{items:[{date:'2026-02-01',count:3}],filters:{from:'2025-01-01',to:'2026-12-31'},onSelect:()=>{}}));
  assert.match(html,/Year-over-year submissions bar chart/);assert.match(html,/percentage unavailable/);assert.match(html,/2026: 3 submissions; filter report/);

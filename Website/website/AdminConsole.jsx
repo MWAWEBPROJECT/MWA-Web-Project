@@ -1,6 +1,7 @@
 import {ADMIN_MODULES} from '@mwa/access';
 import {useAuth} from '@calendar/contexts/AuthContext.jsx';
 import React from 'react';
+import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
 import {CalendarDays,CalendarRange,UtensilsCrossed,HandHeart,Users,Workflow,Wrench,Receipt,HeartHandshake,Megaphone,MicVocal,PanelsTopLeft,ClipboardList,ArrowUpRight} from 'lucide-react';
 
 export const adminModules=[
@@ -24,6 +25,7 @@ export const adminModules=[
 export default function AdminConsole({email}){
  const {canAccess,accessExpired,accessExpiryDate}=useAuth();
  return <section className="admin-console" aria-labelledby="admin-console-title">
+  <AdminBackButton label="Back to Home"/>
   <div className="admin-console-intro"><div className="eyebrow">MWA · ADMINISTRATION</div><h1 id="admin-console-title">Welcome to Admin Console.</h1><p>Manage MWA’s services and website from one place.</p><span className="admin-console-account">Signed in as {email}</span></div>
   {accessExpired?<p role="status">Your admin module access has expired. Contact the Super Admin to renew it.</p>:accessExpiryDate&&<p>Access expires at the end of {accessExpiryDate} (Sydney time).</p>}
   <div className="admin-module-grid">{adminModules.map(({name,icon:Icon,description,href},index)=>{

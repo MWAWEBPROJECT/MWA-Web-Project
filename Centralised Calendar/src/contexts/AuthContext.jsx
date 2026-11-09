@@ -8,6 +8,7 @@ import {
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db, firebaseConfigured } from '../firebase/firebase';
 import { syncAdminAccess } from '../services/adminTeamService';
+import {createAdminSessionCheck,sessionIdentity} from '../utils/adminSessionCheck.mjs';
 
 const AuthContext = createContext(null);
 
@@ -35,6 +36,16 @@ export function AuthProvider({ children }) {
   const syncedUid = useRef(null);
   const linking = useRef(false);
   const hadSession = useRef(false);
+  const sessionGeneration = useRef(0);
+  const bootstrapCheck = useRef(null);
+  if (!bootstrapCheck.current) bootstrapCheck.current = createAdminSessionCheck(() => auth.currentUser, syncAdminAccess);
+
+  useEffect(() => {
+    if (window.self !== window.top) return;
+    const check = user => bootstrapCheck.current(user);
+    window.mwaAdminAccessCheck = check;
+    return () => { if (window.mwaAdminAccessCheck === check) delete window.mwaAdminAccessCheck; };
+  }, []);
 
   useEffect(() => {
     if (!firebaseConfigured) {
@@ -42,16 +53,18 @@ export function AuthProvider({ children }) {
       return;
     }
     const unsubAuth = onAuthStateChanged(auth, (u) => {
+      sessionGeneration.current++;
       const signedOut = hadSession.current && !u;
-      setUser(u);setResponseViewer(false);setProfile(null);setLoading(!!u);
+      setUser(u);setResponseViewer(false);setProfile(null);setLoading(!!u);setSyncing(false);
       if(signedOut){hadSession.current=false;window.top.location.replace("/");}
       if (!u) {
+        bootstrapCheck.current.reset();
         syncedUid.current = null;
         setProfile(null);
         setLoading(false);
       }
     });
-    return unsubAuth;
+    return () => {sessionGeneration.current++;syncedUid.current=null;unsubAuth();};
   }, []);
 
   // Public flag: hides the email/password form once the owner has signed in with Google.
@@ -63,9 +76,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function runSync(quiet=false) {
+    const checkedUser=auth.currentUser,generation=sessionGeneration.current,identity=sessionIdentity(checkedUser);
+    const current=()=>sessionGeneration.current===generation&&sessionIdentity(auth.currentUser)===identity;
+    if(!checkedUser)return;
     if(!quiet)setSyncing(true);
     try {
-      const res = await syncAdminAccess();
+      let parentCheck;
+      if(!quiet&&window.self!==window.top){
+        try{parentCheck=window.parent.mwaAdminAccessCheck;}catch{/* A separately hosted frame must check its own session. */}
+      }
+      const res = await (quiet?syncAdminAccess():parentCheck?parentCheck(checkedUser):bootstrapCheck.current(checkedUser));
+      if(!current())return;
       if(res?.viewer){setResponseViewer(true);setAuthError('');hadSession.current=true;}
       else if (res && res.admin === false) {
         setAuthError(DENIED_MESSAGES[res.reason] || DENIED_MESSAGES['not-listed']);
@@ -73,10 +94,11 @@ export function AuthProvider({ children }) {
       } else {
         setResponseViewer(false);setAuthError('');
       }
-    } catch {
+    } catch (error) {
       // If the check itself fails (e.g. offline), fall back to the stored role; rules still enforce it.
+      if(current())console.error('Admin session check failed; current stored access remains subject to rules.',error);
     } finally {
-      setSyncing(false);
+      if(current())setSyncing(false);
     }
   }
 
@@ -90,6 +112,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!user) return undefined;
     const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      if(auth.currentUser?.uid!==user.uid)return;
       setProfile(snap.exists() ? snap.data() : null);
       setLoading(false);
     }, () => setLoading(false));
@@ -165,7 +188,7 @@ export function AuthProvider({ children }) {
   };
 
   const cancelGoogleLink = () => setPendingLink(null);
-  const clearAdminWorkspace=()=>{setUser(null);setResponseViewer(false);setProfile(null);setTeamState({email:'',entry:null});setPendingLink(null);setLoading(false);};
+  const clearAdminWorkspace=()=>{sessionGeneration.current++;bootstrapCheck.current.reset();setUser(null);setResponseViewer(false);setProfile(null);setTeamState({email:'',entry:null});setPendingLink(null);setLoading(false);setSyncing(false);};
   useEffect(()=>{
     const receiveSignOut=event=>{if(event.key!=='mwa-admin-signout'||!event.newValue)return;clearAdminWorkspace();signOut(auth).then(()=>window.top.location.replace('/')).catch(()=>window.top.location.replace('/'));};
     window.addEventListener('storage',receiveSignOut);

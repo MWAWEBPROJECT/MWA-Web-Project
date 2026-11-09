@@ -2,6 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {useAuth} from '@calendar/contexts/AuthContext.jsx';
 import {collectExport} from './donation-export-model.mjs';
 import {auth} from '@calendar/firebase/firebase.js';
+import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
 const funds=['General Donation','313 Contribution','Niaz Contribution','Youth Fund','Khums Contribution','Donation for MWA School','Fitra'];
 const initial={search:'',from:'',to:'',fund:'',recurringMode:'',status:''};
 const money=n=>(n/100).toLocaleString('en-AU',{style:'currency',currency:'AUD'});
@@ -18,9 +19,9 @@ export default function DonationsAdmin(){
  async function cancel(){if(!selected||!allowed)return;setBusy(true);setError('');try{await api('admin-cancel',{method:'POST',body:JSON.stringify({id:selected.id,confirm:true})});setSelected(null);setNotice('Recurring donation cancelled. A confirmation email will follow.');await load();}catch(e){setError(e.message);setBusy(false)}}
  async function exportData(format){const userId=auth.currentUser?.uid;if(!allowed||!userId)return;setExporting(true);setBusy(true);setError('');exportStop.current=false;const asOf=Date.now(),active={...filters};const cancelled=()=>exportStop.current||auth.currentUser?.uid!==userId;try{const rows=await collectExport(api,active,{asOf,cancelled,progress:n=>setNotice('Preparing export: '+n+' matching records…')});const report=await import('./donation-exports.mjs');const blob=await (format==='xlsx'?report.excelReport:report.pdfReport)(rows,active,asOf,report.exportColour(),{cancelled,progress:(page,total)=>setNotice('Preparing PDF page '+page+' of '+total+'…')});if(cancelled())throw Error('Export cancelled.');await api('admin-export',{method:'POST',body:JSON.stringify({format,count:rows.length})});if(cancelled())throw Error('Export cancelled.');report.downloadReport(blob,format,asOf);setNotice(format.toUpperCase()+' download prepared: '+rows.length+' matching records.');}catch(e){setError(e.message);setNotice('');}finally{setExporting(false);setBusy(false);}}
  if(session.loading)return <p>Checking your admin access…</p>;
- if(!allowed)return <section className="admin-console"><h1>Donation Administration</h1><p>Your account does not have access to this module.</p><a href="/admin-login">Back to Admin Console</a></section>;
+ if(!allowed)return <section className="admin-console"><AdminBackButton/><h1>Donation Administration</h1><p>Your account does not have access to this module.</p></section>;
  const field=(key,value)=>setDraft(d=>({...d,[key]:value}));
- return <section className="admin-console donations-admin"><div className="eyebrow">MWA · SANDBOX</div><h1>Donation Administration</h1><p>Find donations using an email, mobile number, name prefix or donation reference. Combine with date and fund filters. No real money moves.</p><p><a href="/admin-login">← Admin Console</a></p>
+ return <section className="admin-console donations-admin"><AdminBackButton/><div className="eyebrow">MWA · SANDBOX</div><h1>Donation Administration</h1><p>Find donations using an email, mobile number, name prefix or donation reference. Combine with date and fund filters. No real money moves.</p>
  <form className="donation-filters" onSubmit={e=>{e.preventDefault();setSelected(null);setPages(['']);setFilters({...draft});}}>
  <label className="donation-search">Find donor or reference<input value={draft.search} onChange={e=>field('search',e.target.value)} placeholder="Email, mobile, name or MWA reference" maxLength="254"/></label>
  <label>Received from<input type="date" value={draft.from} onChange={e=>field('from',e.target.value)} max={draft.to||undefined}/></label><label>Received to<input type="date" value={draft.to} onChange={e=>field('to',e.target.value)} min={draft.from||undefined}/></label>

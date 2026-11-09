@@ -10,11 +10,12 @@ import BookingModal from '../components/BookingModal.jsx';
 import { Trash2 } from 'lucide-react';
 import { useBookingDeletion } from '../components/useBookingDeletion.jsx';
 
-export default function AdminPage({ events, venues, departments, hijriOverrides, onSaved, onReloadSettings }) {
+export default function AdminPage({ events, venues, departments, hijriOverrides, onSaved, onReloadSettings,registerBack }) {
   const auth = useAuth();
   const {user,profile,isOwner,loading}=auth;
   const isAdmin=auth.canAccess('events-bookings');
   const [sub, setSub] = useState('pending');
+  useEffect(()=>{registerBack?.(sub==='pending'?null:()=>setSub('pending'));return()=>registerBack?.(null);},[sub,registerBack]);
 
   if (loading) return <section><p className="muted">Loading…</p></section>;
   if (!user || !isAdmin) return <LoginCard {...auth} />;

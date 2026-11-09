@@ -1,23 +1,17 @@
 import './YouTubePanel.jsx';
 import {normaliseTextSize,applyTextSize} from '../shared/text-size.js';
-import {mountCommunityCalendar} from './community-calendar.jsx';
 import {recordActivity} from '@calendar/services/auditService.js';
-import React,{useState,useEffect} from 'react';
+import React,{lazy,Suspense,useState,useEffect} from 'react';
 import {createPortal} from 'react-dom';
 import {createRoot} from 'react-dom/client';
 import {onAuthStateChanged} from 'firebase/auth';
 import {doc,onSnapshot} from 'firebase/firestore';
 import {auth,db} from '@calendar/firebase/firebase.js';
 import {AuthProvider,useAuth} from '@calendar/contexts/AuthContext.jsx';
-import AdminLoginCard from './AdminLoginCard.jsx';
-import AdminConsole from './AdminConsole.jsx';
-import DonationsAdmin from './DonationsAdmin.jsx';
-import EnquiriesPage from './EnquiriesPage.jsx';
-import FormBuilder from './FormBuilder.jsx';
-import FormInsights from './FormInsights.jsx';
-import InsightsDetail from './InsightsDetail.jsx';
-import InsightsPeople from './InsightsPeople.jsx';
-import Registrations,{RegistrationList} from './Registrations.jsx';
+import AdminLogin from './AdminEntry.jsx';
+const EnquiriesPage=lazy(()=>import('./EnquiriesPage.jsx'));
+const Registrations=lazy(()=>import('./Registrations.jsx'));
+const RegistrationList=lazy(()=>import('./Registrations.jsx').then(module=>({default:module.RegistrationList})));
 import './contact-form.js';
 import {schemes,defaults,applyAppearance,normaliseSettings} from '../shared/appearance.js';
 import './firebase-website.css';
@@ -25,6 +19,27 @@ import './website-polish.css';
 import './website-polish.js';
 import './solar-panel.js';
 import {mountCalendarShell} from './calendar-shell.js';
+import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
+import {goAdminBack,recordAdminPage} from '@calendar/utils/adminNavigation.mjs';
+import WorkspaceBoundary from '@calendar/components/WorkspaceBoundary.jsx';
+
+recordAdminPage();
+const cmsHeading=document.querySelector('#cms-dialog .cms-heading');
+const cmsBackRoot=document.createElement('div');
+if(cmsHeading){cmsHeading.prepend(cmsBackRoot);document.querySelector('#cms-close').hidden=true;}
+const cmsGateRoot=document.createElement('div');
+if(location.pathname.replace(/\/$/,'')==='/cms'){
+ document.querySelector('#modal')?.prepend(cmsGateRoot);
+ const close=document.querySelector('#close-modal');if(close)close.hidden=true;
+ const body=document.querySelector('#modal-body');
+ if(body)new MutationObserver(()=>{for(const link of body.querySelectorAll('a[href="/admin-login"]'))if(link.textContent.trim()==='Admin Console')link.remove();}).observe(body,{childList:true,subtree:true});
+}
+function cmsBack(){
+ const publish=document.querySelector('#cms-publish');
+ if(publish&&!publish.disabled&&!confirm('Leave the editor? Unpublished changes will be lost.'))return;
+ document.querySelector('#cms-close')?.click();
+ if(location.pathname.replace(/\/$/,'')==='/cms')goAdminBack();
+}
 
 window.MWA_SCHEMES=schemes;window.MWA_TEXT_SIZE={normalise:normaliseTextSize,apply:applyTextSize};
 let siteSettings=defaults;applyAppearance(siteSettings);
@@ -37,7 +52,6 @@ onSnapshot(doc(db,'calendarSettings','websiteAppearance'),snapshot=>{if(snapshot
 const refreshAppearance=()=>applyAppearance(siteSettings);
 window.addEventListener('storage',refreshAppearance);window.addEventListener('mwa-appearance-preferences',refreshAppearance);matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refreshAppearance);
 
-function AdminLogin(){const session=useAuth();useEffect(()=>{window.mwaPageReady?.()},[]);const requestedReturn=new URLSearchParams(location.search).get('returnTo');const bookingReturn=/^\/calendar\/\?booking=[a-zA-Z0-9_-]{1,128}&decision=(approve|reject)$/.test(requestedReturn||'');const returnTo=bookingReturn||['/cms','/calendar-management/','/tools-automation/'].includes(requestedReturn)||/^\/enquiries\/(?:\?(?:thread=[a-f0-9]{32}|mailbox=setup))?$/.test(requestedReturn||'')?requestedReturn:null;const returnToCms=!!returnTo;useEffect(()=>{if(!session.loading&&session.isAdmin&&returnToCms)location.replace(returnTo)},[session.loading,session.isAdmin,returnTo]);if(!session.loading&&session.isAdmin&&returnToCms)return <div className="admin-welcome"><p>Opening your workspace…</p></div>;if(session.loading)return <div className="admin-welcome"><p>Checking your admin session…</p></div>;if(session.isResponseViewer)return <FormBuilder/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='insights-detail')return <InsightsDetail/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='insights-people')return <InsightsPeople/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='form-insights')return <FormInsights/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='donations')return <DonationsAdmin/>;if(session.isAdmin&&new URLSearchParams(location.search).get('module')==='form-builder')return <FormBuilder/>;if(session.isAdmin)return <AdminConsole email={session.user?.email}/>;return <div className="mwa-admin-auth"><div className="admin-auth-intro"><div className="eyebrow">ONE MWA · ONE ADMIN ACCOUNT</div><h1>Admin login.</h1><p>Use your existing MWA calendar admin account. After signing in, open the calendar workspace or manage website content.</p></div><AdminLoginCard {...session}/></div>}
 if(location.pathname.replace(/\/$/,'')==='/admin-login'){
  document.querySelector('#main').hidden=true;document.querySelector('.skip')?.setAttribute('href','#admin-main');document.querySelector('#admin-main').hidden=false;
 
@@ -57,15 +71,15 @@ function WebsiteSession(){
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');
  useEffect(()=>{window.mwaAdminSession={loading:session.loading,isAdmin:session.isAdmin,signedIn:!!session.user,modules:session.modules};if(session.loading)return;resolveAdminReady();window.MWA_BRIDGE_RESOLVE();window.dispatchEvent(new Event('mwa-auth-changed'))},[session.loading,session.isAdmin,session.user?.uid,session.modules.join(',')]);
  async function signOut(){setBusy(true);setError('');const frame=document.querySelector('#mwa-calendar-frame');if(frame)frame.remove();window.mwaAdminSession={loading:false,isAdmin:false,signedIn:false,modules:[]};window.dispatchEvent(new Event('mwa-auth-changed'));try{await session.logout()}catch{setError('Could not sign out. Please try again.')}finally{setBusy(false)}}
- return <>{session.isAdmin?<button className="btn alt small admin-header" type="button" disabled={busy} aria-busy={busy} onClick={signOut}>Admin Sign out</button>:<a className="btn alt small admin-header" href="/admin-login">Admin Login</a>}{session.isAdmin&&createPortal(<><a className="nav-admin-console" href="/admin-login" aria-current={location.pathname==='/admin-login'?'page':undefined}>Admin Console</a></>,document.querySelector('#nav'))}{error&&<span role="alert" className="admin-header-error">{error}</span>}{location.pathname.replace(/\/$/,'')==='/admin-login'&&createPortal(<AdminLogin/>,document.querySelector('#admin-root'))}{location.pathname.replace(/\/$/,'')==='/enquiries'&&createPortal(<EnquiriesPage/>,document.querySelector('#enquiries-root'))}{registrationsRoute&&createPortal(<Registrations/>,document.querySelector('#registrations-main'))}{location.pathname==='/'&&createPortal(<RegistrationList panel/>,document.querySelector('#registrations-panel-root'))}</>;
+ return <>{session.isAdmin?<button className="btn alt small admin-header" type="button" disabled={busy} aria-busy={busy} onClick={signOut}>Admin Sign out</button>:<a className="btn alt small admin-header" href="/admin-login">Admin Login</a>}{session.isAdmin&&createPortal(<><a className="nav-admin-console" href="/admin-login" aria-current={location.pathname==='/admin-login'?'page':undefined}>Admin Console</a></>,document.querySelector('#nav'))}{cmsHeading&&createPortal(<AdminBackButton onBack={cmsBack}/>,cmsBackRoot)}{cmsGateRoot.isConnected&&createPortal(<AdminBackButton onBack={()=>{document.querySelector('#close-modal')?.click();goAdminBack();}}/>,cmsGateRoot)}{error&&<span role="alert" className="admin-header-error">{error}</span>}{location.pathname.replace(/\/$/,'')==='/admin-login'&&createPortal(<AdminLogin/>,document.querySelector('#admin-root'))}{location.pathname.replace(/\/$/,'')==='/enquiries'&&createPortal(<EnquiriesPage/>,document.querySelector('#enquiries-root'))}{registrationsRoute&&createPortal(<Registrations/>,document.querySelector('#registrations-main'))}{location.pathname==='/'&&createPortal(<RegistrationList panel/>,document.querySelector('#registrations-panel-root'))}</>;
 }
 const adminHeader=document.querySelector('.admin-header');
 const sessionRoot=document.createElement('span');sessionRoot.className='admin-header-slot';
 adminHeader.replaceWith(sessionRoot);
-createRoot(sessionRoot).render(<AuthProvider><WebsiteSession/></AuthProvider>);
+createRoot(sessionRoot).render(<AuthProvider><WorkspaceBoundary><Suspense fallback={<p role="status">Opening your workspace…</p>}><WebsiteSession/></Suspense></WorkspaceBoundary></AuthProvider>);
 mountCalendarShell();
 
-mountCommunityCalendar();
+if(location.pathname==='/')import('./community-calendar.jsx').then(module=>module.mountCommunityCalendar()).catch(error=>console.error('Community calendar could not open.',error));
 
 window.addEventListener('mwa-appearance-preferences',()=>{if(window.mwaAdminSession?.isAdmin)recordActivity('website','appearance.changed',document.documentElement.dataset.palette+' / '+document.documentElement.dataset.mode);});
 

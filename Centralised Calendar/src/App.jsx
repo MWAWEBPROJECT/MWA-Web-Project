@@ -1,7 +1,8 @@
 import BookingEmailAction from './components/BookingEmailAction.jsx';
-import {CalendarManagement,ToolsAutomation} from './pages/ModulePages.jsx';
 import {recordActivity} from './services/auditService.js';
-import { useCallback, useEffect, useState } from 'react';
+import { lazy,Suspense,useCallback, useEffect, useRef, useState } from 'react';
+import AdminBackButton from './components/AdminBackButton.jsx';
+import WorkspaceBoundary from './components/WorkspaceBoundary.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
 import { firebaseConfigured } from './firebase/firebase.js';
 import { watchVenues, watchDepartments } from './services/directoryService.js';
@@ -11,17 +12,23 @@ import { dateKeyInOrgTz } from './utils/dateUtils.js';
 import Header from './components/Header.jsx';
 import CalendarPage from './pages/CalendarPage.jsx';
 import BookingsPage from './pages/BookingsPage.jsx';
-import AdminPage from './pages/AdminPage.jsx';
+const AdminPage=lazy(()=>import('./pages/AdminPage.jsx'));
+const CalendarManagement=lazy(()=>import('./pages/ModulePages.jsx').then(module=>({default:module.CalendarManagement})));
+const ToolsAutomation=lazy(()=>import('./pages/ModulePages.jsx').then(module=>({default:module.ToolsAutomation})));
 import BookingModal from './components/BookingModal.jsx';
 import IslamicEventsPage from './pages/IslamicEventsPage.jsx';
 
 export default function App() {
-  const {canAccess,user}=useAuth();
+  const {canAccess,user,loading}=useAuth();
   const isAdmin=canAccess('events-bookings');
   const userId=user?.uid || null;
   const entryView=new URLSearchParams(window.location.search).get('view');
   const moduleView=['calendar-management','tools'].includes(entryView);
-  const [tab, setTab] = useState(()=>['calendar-management','tools','islamic-events'].includes(entryView)?entryView:'calendar');
+  const [tab, updateTab] = useState(()=>['calendar-management','tools','islamic-events'].includes(entryView)?entryView:'calendar');
+  const tabHistory=useRef([]),nestedBack=useRef(null);
+  const setTab=value=>{if(value!==tab){tabHistory.current.push(tab);nestedBack.current=null;updateTab(value);}};
+  const registerBack=useCallback(callback=>{nestedBack.current=callback;},[]);
+  const back=()=>{if(nestedBack.current){nestedBack.current();return;}const previous=tabHistory.current.pop();if(previous)updateTab(previous);else if(window.self!==window.top)window.parent.postMessage({type:'mwa-admin-back'},location.origin);else window.location.assign('/admin-login');};
   const [venues, setVenues] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [events, setEvents] = useState([]);
@@ -37,25 +44,25 @@ export default function App() {
   useEffect(() => {
     const view=new URLSearchParams(window.location.search).get('view');
     if(view==='islamic-events')setTab('islamic-events');
-    else if(isAdmin && view==='admin')setTab('admin');
-    else if(!isAdmin)setTab(current=>current==='admin'?'calendar':current);
-  }, [isAdmin]);
+    else if(isAdmin && view==='admin')updateTab('admin');
+    else if(!loading&&!isAdmin)updateTab(current=>current==='admin'?'calendar':current);
+  }, [isAdmin,loading]);
 
   useEffect(() => {
-    if (!firebaseConfigured) return undefined;
+    if (!firebaseConfigured || entryView==='tools') return undefined;
     const unsubV = watchVenues(setVenues);
     const unsubD = watchDepartments(setDepartments);
     return () => { unsubV(); unsubD(); };
   }, []);
 
   useEffect(() => {
-    if (!firebaseConfigured) return;
+    if (!firebaseConfigured || entryView==='tools') return;
     return watchHijriSettings(s => setHijriOverrides(s.overrides || []),()=>{});
   }, []);
 
   // Admin history and public events load through bounded server-side pages.
   useEffect(() => {
-    if (!firebaseConfigured) return undefined;
+    if (!firebaseConfigured || loading) return undefined;
     if (moduleView) return undefined;
     let cancelled = false;
     const load = isAdmin
@@ -63,7 +70,7 @@ export default function App() {
       : publicRange ? fetchPublicEvents(publicRange) : Promise.resolve([]);
     setPublicError('');load.then(list => { if (!cancelled) { setEvents(list); setEventsScope({ isAdmin, userId }); } }).catch(() => { if (!cancelled) {setEvents([]);setEventsScope({ isAdmin, userId });setPublicError('Calendar could not be loaded. Please try again.');} });
     return () => { cancelled = true; };
-  }, [isAdmin, userId, publicLoadTick, moduleView, publicRange]);
+  }, [isAdmin, userId, loading, publicLoadTick, moduleView, publicRange]);
 
   useEffect(() => {
     if (!firebaseConfigured || moduleView || tab !== 'bookings' || !isAdmin) return undefined;
@@ -82,7 +89,7 @@ export default function App() {
 
   useEffect(()=>{if(isAdmin)recordActivity(tab==='tools'?'tools-automation':tab==='calendar-management'?'calendar-management':tab==='islamic-events'?'islamic-events':'events-bookings','module.opened',tab);},[tab,isAdmin]);
 
-  useEffect(()=>{if(!isAdmin){setEvents([]);setNewBooking(null);setTab(current=>current==='admin'?'calendar':current)}},[isAdmin]);
+  useEffect(()=>{if(!isAdmin){setEvents([]);setNewBooking(null);tabHistory.current=[];nestedBack.current=null;updateTab(current=>current==='admin'?'calendar':current)}},[isAdmin]);
   const reloadPublic = () => setPublicLoadTick(t => t + 1);
   const updatePublicRange = useCallback(range => {
     setPublicRange(current => current?.from === range.from && current?.to === range.to ? current : range);
@@ -105,8 +112,9 @@ export default function App() {
   return (
     <div className="calendar-app">
       <div className="app-container">
+        {!moduleView&&(isAdmin||entryView==='admin'||new URLSearchParams(location.search).has('booking'))&&<AdminBackButton onBack={back}/>}
         <Header tab={tab} setTab={setTab} onNewBooking={() => setNewBooking({ date: null })} />
-        <main>{publicError&&!(tab==='bookings'&&isAdmin)&&<p role="alert">{publicError} <button onClick={reloadPublic}>Retry</button></p>}<BookingEmailAction/>
+        <main><WorkspaceBoundary><Suspense fallback={<p role="status">Opening your workspace…</p>}>{publicError&&!(tab==='bookings'&&isAdmin)&&<p role="alert">{publicError} <button onClick={reloadPublic}>Retry</button></p>}<BookingEmailAction/>
           {tab === 'calendar-management' && <CalendarManagement hijriOverrides={hijriOverrides} onReloadSettings={()=>getHijriSettings().then(s=>setHijriOverrides(s.overrides||[]))}/>}
           {tab === 'tools' && <ToolsAutomation/>}
           {tab === 'islamic-events' && <IslamicEventsPage hijriOverrides={hijriOverrides} departments={departments} venues={venues} />}
@@ -130,11 +138,12 @@ export default function App() {
           {tab === 'admin' && (
             <div className="page-panel glass-panel">
               <AdminPage events={visibleEvents} venues={venues} departments={departments}
+                registerBack={registerBack}
                 hijriOverrides={hijriOverrides} onSaved={reloadPublic}
                 onReloadSettings={() => getHijriSettings().then(s => setHijriOverrides(s.overrides || []))} />
             </div>
           )}
-        </main>
+        </Suspense></WorkspaceBoundary></main>
         <footer className="app-footer">
           <span>MWA Central Calendar</span>
           <span>Australia/Sydney <span className="footer-dot">·</span> {isAdmin ? 'Admin view' : 'Public calendar'}</span>

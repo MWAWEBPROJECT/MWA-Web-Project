@@ -1,0 +1,4 @@
+.mwa-admin-back{display:flex;align-items:center;justify-content:center;width:44px;height:44px;margin:0 0 12px;border:1px solid currentColor;border-radius:50%;background:transparent;color:inherit;cursor:pointer;flex-shrink:0}
+.mwa-admin-back:focus-visible{outline:3px solid var(--accent,#176446);outline-offset:3px}
+.mwa-admin-back:disabled{opacity:.5;cursor:wait}
+#cms-close[hidden],#close-modal[hidden]{display:none}
