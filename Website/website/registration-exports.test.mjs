@@ -1,13 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectResponses,responseWorkbook,insightsWorkbook,mappedAnswersWorkbook,mappedAnswersContent,mappedAnswersPdf,cohortHeatmapWorkbook,cohortHeatmapContent,MAX_EXPORT_RESPONSES,insightsPdfBlocks,paginateInsightsPdf} from './registration-exports.mjs';
-import {filterResponses,responseQuestions} from './registration-response-model.mjs';
+import {filterResponses,responseQuestions,responseName} from './registration-response-model.mjs';
 import {INSIGHTS_PROVENANCE,insightsExportFilter,insightsPdfMetricRows,yearOverYear} from './insights-provenance.mjs';
 const asOf='2026-11-03T02:30:00.000Z';
 const name={id:'name',type:'text',label:'Full name',required:true};
 const consent={id:'consent',type:'consent',label:'Agreement',required:true,terms:'Original terms'};
 const form={id:'synthetic-form',title:'Community form',revision:2,fields:[name,consent]};
 const row={id:'one',reference:'MWA-R-ONE',createdAt:'2026-11-02T22:15:00.000Z',formTitle:'Original form title',revision:1,eventId:'event-one',fields:[name,consent],answers:{name:'=HYPERLINK("https://example.invalid")',consent:true}};
+test('response summaries use the saved name question and clearly identify missing names',()=>{
+ assert.equal(responseName({...row,answers:{name:'  Synthetic Name  '}}),'Synthetic Name');
+ assert.equal(responseName({...row,fields:[{id:'custom',type:'text',label:'Full name'}],answers:{custom:'Custom Name'}}),'Custom Name');
+ assert.equal(responseName({...row,answers:{name:''}}),'Name not provided');
+ assert.equal(responseName({...row,fields:[{id:'other',type:'text',label:'Programme name'}],answers:{other:'Not a person'}}),'Name not provided');
+});
 test('mapped-answer workbook carries aggregate counts and formula-safe labels without personal data',async()=>{
  const report={concept:'meal',generatedAt:asOf,filters:{from:'2026-01-01',to:'2026-11-01',basis:'event',formId:'',eventFiltered:true,searchUsed:false},coverage:{indexed:7,unavailableEvent:1,staleSource:0,unreviewed:1,unmapped:1,conflicting:0,unsupported:1},notice:'Indexed coverage is incomplete; multiple selections can exceed 100%.',groups:[{label:'Meal',type:'checkboxes',eligible:3,answered:2,missing:1,invalid:0,options:[{label:'=1+1',count:2},{label:'Other',count:1}]},{label:'Size',type:'number',eligible:1,answered:1,missing:0,invalid:0,min:4,max:4,mean:4}]};
  const ExcelJS=(await import('exceljs')).default,book=new ExcelJS.Workbook();await book.xlsx.load(await (await mappedAnswersWorkbook(report)).arrayBuffer());
