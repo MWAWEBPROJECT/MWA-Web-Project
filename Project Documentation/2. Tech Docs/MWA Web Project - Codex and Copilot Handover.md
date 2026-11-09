@@ -3,7 +3,7 @@
 
 # MWA Web Project — Codex / Copilot handover
 
-Last updated: **9 November 2026, Australia/Sydney** by Copilot — locally implemented expandable Form Builder response cards; this follow-up is uncommitted, unpushed and undeployed. Prior admin-navigation release is recorded below.
+Last updated: **9 November 2026, Australia/Sydney** by Copilot — user-approved expandable response cards committed/pushed as `a7221f3` and released to Website Hosting only; actual evidence below.
 
 ## Expandable Form Builder responses — 9 November 2026, Australia/Sydney
 
@@ -12,6 +12,10 @@ User-directed narrow change: Responses now renders independent, initially collap
 Affected files: `Website/website/FormBuilder.jsx`, `registration-response-model.mjs`, `registrations.css`, `registration-exports.test.mjs`, and this authoritative handover. Local validation: `node --test website\registrations-render.test.mjs website\registration-exports.test.mjs` from Website passed **34/34, zero skipped**; existing esbuild render tooling compiled Form Builder. The session artifact `response-cards-browser-test.cjs` passed **17** Chromium checks using actual Form Builder with local mocked responses: collapsed defaults, correct references/names/missing-name label, hidden initial details, keyboard/click expansion and collapse, independent cards, existing full title/consent/action visibility, viewer no-edit permissions, retained correction draft on collapse and cancelled Back, confirmed Back discard, and saved correction updating summary name. No server/emulator or provider/production call was used. An initial harness assertion concatenated two inline summary elements without accounting for CSS spacing; corrected to assert each number/name element separately before the passing results.
 
 Git status: canonical `main` was clean at `550fa76` before this task (latest coordinator release handover already present; no pull required). These five paths are saved locally, uncommitted/unpushed/undeployed. Prior release/guide/PDF content preserved. `git diff --check` passed. Review-only diff is in session artifacts, not a new source checkout. Next: coordinator reviews the collapsed-card UX; any commit/push/Hosting release requires separate approval. Browser closed in `finally`; no owned helper remains running.
+
+**User-approved release, 9 November 2026:** coordinator reviewed the five-path diff and relayed the user's explicit “Commit, push and deploy website only” approval. Fresh Website plus embedded Calendar build passed with existing chunk warnings; confirmed exact reviewed diff before committing. Committed those five paths with the required co-author trailer as `a7221f3d6c2c2895c25c6006e618557223ba6d63` and pushed `main`. Deployed only `hosting:website` to `project-7a4fb531-414f-4ade-88e`; CLI reported complete, and read-only Hosting metadata verified release `1794205018500000`, version `f06cd4548ca6b1c0`, at `2026-11-09T06:16:58.500Z`. Immediately before release, verified rollback release `1794203531473000` / version `3e71aa82cd90bf95`; no rollback was performed.
+
+Read-only public asset verification: `/admin-login` references `/assets/index-B2w4Xz4B.js`; fetched entry SHA256 `027291c6a0c4bc7f58c3dc86e8c7d989cd9cdf42c04254d251d4449324f9292d` exactly matches the built file. Live `FormBuilder-DZCC_Ugj.js` SHA256 `f48ec3569a469a57fc38ed3cb8f1e648556bb6c4923c9932a3bd7c28f277d82d` matches the built chunk and contains the response-card class. This proves deployed asset identity, not authenticated live response interaction; the 17 browser checks remain local synthetic evidence. No functions/rules/indexes, `hosting:calendar`, data/provider writes or real messages occurred. This release documentation is committed/pushed separately after source deployment; the earlier local-only paragraph above is historical pre-release evidence.
 
 ## Admin performance and back navigation — 9 November 2026, Australia/Sydney
 
