@@ -22,6 +22,7 @@ exports.websiteCmsApi=onRequest({region:'australia-southeast1',maxInstances:3,se
   if(/^\/api\/insights-detail(?:\/|$)/.test(req.path))return require('./insights-detail-api').handle(req,res,{db,getAuth,origins});
   if(req.path==='/api/youtube-feed'&&req.method==='GET')return require('./youtube-feed').serve(db,res);
   if(/^\/api\/registrations(?:\/|$)/.test(req.path))return require('./registrations-api').handle(req,res,{db,getAuth,origins});
+  if(/^\/api\/niaz(?:\/|$)/.test(req.path))return require('./niaz-api').handle(req,res,{db,getAuth,origins});
   if(/^\/api\/enquiries(?:\/|$)/.test(req.path))return require('./enquiries-api').handle(req,res,{db,getAuth,origins});
   const socialRoute=req.path.replace(/\/$/,'').endsWith('/social-moderation');
   if(socialRoute){
@@ -64,6 +65,19 @@ const youtubeKey=require('firebase-functions/params').defineSecret('YOUTUBE_DATA
 exports.youtubeFeedRefresh=require('firebase-functions/v2/scheduler').onSchedule({schedule:'every 15 minutes',region:'australia-southeast1',timeoutSeconds:240,maxInstances:1,secrets:[youtubeKey]},()=>require('./youtube-feed').refresh(db,youtubeKey.value()));
 
 const firestore=require('firebase-functions/v2/firestore');
+exports.onNiazEventChanged=firestore.onDocumentWritten({document:'events/{eventId}',region:'australia-southeast1',retry:true},async event=>{
+ const latest=await db.doc('events/'+event.params.eventId).get();
+ const lifecycle=require('./niaz-lifecycle');
+ await lifecycle.triggerAction(db,'event',event.params.eventId,()=>lifecycle.onEventChanged(db,event.params.eventId,event.data.before.data(),latest.exists?latest.data():undefined));
+});
+exports.niazSandboxDonationProjection=firestore.onDocumentWritten({document:'_stripeSandboxDonations/{donationId}',region:'australia-southeast1',retry:true},async event=>{
+ if(!event.data.after.exists)return;
+ // A delayed delivery re-reads the source to avoid replaying older settlement state.
+ const source=await event.data.after.ref.get();
+ if(source.exists){const lifecycle=require('./niaz-lifecycle');await lifecycle.triggerAction(db,'sandbox-donation',event.params.donationId,()=>lifecycle.projectSandboxDonation(db,event.params.donationId,source.data()));}
+});
+exports.niazReminderPreparation=require('firebase-functions/v2/scheduler').onSchedule({schedule:'every 60 minutes',region:'australia-southeast1',timeoutSeconds:240,maxInstances:1},()=>require('./niaz-lifecycle').prepareNotices(db));
+exports.niazNotificationWorker=require('firebase-functions/v2/scheduler').onSchedule({schedule:'every 5 minutes',region:'australia-southeast1',timeoutSeconds:240,maxInstances:1,concurrency:1},()=>require('./niaz-notifications').run(db));
 exports.registrationInsightsIndex=firestore.onDocumentWritten({document:'registrationForms/{formId}/responses/{responseId}',region:'australia-southeast1',retry:true},async event=>{
  const insights=require('./form-insights'),state=require('./insights-state');
  await state.recordSourceChange(db,event.params.formId);

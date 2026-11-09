@@ -1,5 +1,9 @@
 {
   "indexes": [
+    {"collectionGroup":"niazEOIs","queryScope":"COLLECTION","fields":[{"fieldPath":"eventIds","arrayConfig":"CONTAINS"},{"fieldPath":"status","order":"ASCENDING"}]},
+    {"collectionGroup":"_niazOutbox","queryScope":"COLLECTION","fields":[{"fieldPath":"state","order":"ASCENDING"},{"fieldPath":"nextAttempt","order":"ASCENDING"}]},
+    {"collectionGroup":"niazSponsorships","queryScope":"COLLECTION","fields":[{"fieldPath":"eventId","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"}]},
+    {"collectionGroup":"events","queryScope":"COLLECTION","fields":[{"fieldPath":"seriesId","order":"ASCENDING"},{"fieldPath":"startAt","order":"ASCENDING"}]},
     {
       "collectionGroup": "events",
       "queryScope": "COLLECTION",

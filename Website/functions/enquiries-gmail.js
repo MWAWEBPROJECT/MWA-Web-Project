@@ -25,4 +25,18 @@ async function deliver(db,token,doc){const jobRef=doc.ref;let job,thread;const l
 async function run(db){const lock=db.doc('_enquiryPrivate/workerLock'),lease=randomBytes(16).toString('hex');let acquired=false;await db.runTransaction(async tx=>{const previous=await tx.get(lock);if((previous.data()?.until||0)>Date.now())return;tx.set(lock,{lease,until:Date.now()+240000});acquired=true;});if(!acquired)return;try{for(const [collection,field,cutoff] of [['_enquiryRateLimits','expiresAt',new Date()],['_enquiryOAuthStates','expiresAt',Date.now()]]){const old=await db.collection(collection).where(field,'<',cutoff).limit(100).get();if(!old.empty){const batch=db.batch();old.docs.forEach(d=>batch.delete(d.ref));await batch.commit();}}const config=(await db.doc(CONFIG).get()).data();if(!config?.connected)return;const token=await tokenFor(db);try{if(config.recoveryActive)await recover(db,token,config);else await syncMailbox(db,token);}catch{await db.doc(CONFIG).update({lastError:'Incoming email sync is delayed. The next scheduled run will retry.'});}
  const jobs=await db.collection('enquiryOutbox').where('nextAttemptAt','<=',iso()).orderBy('nextAttemptAt').limit(30).get();let count=0;for(const doc of jobs.docs){if(doc.data().nextAttemptAt<=iso()){await deliver(db,token,doc);if(++count>=15)break;}}
  }catch{await db.doc(CONFIG).set({lastError:'Mailbox processing is delayed. Check the Google connection and retry.'},{merge:true});}finally{await db.runTransaction(async tx=>{const current=await tx.get(lock);if(current.data()?.lease===lease)tx.set(lock,{until:0,lease:''});});}}
-module.exports={CALLBACK,SCOPES,status,mailboxAction,callback,tokenFor,importMessage,run,deliver,syncMailbox,recover};
+async function sendServiceNotice(db,{to,subject,body,key}){
+ const token=await tokenFor(db),messageId=C.rfcId('service-'+C.hash(key));
+ const found=await api(token,'messages?'+new URLSearchParams({q:'rfc822msgid:'+messageId,maxResults:'1'}));
+ if(found.messages?.length)return {gmailId:found.messages[0].id,reconciled:true};
+ const raw=C.rawEmail({to,subject,body,messageId});
+ const intent=db.doc('_niazServiceNotices/'+C.hash(key));
+ const firstAttempt=await db.runTransaction(async tx=>{const current=await tx.get(intent);if(current.exists)return false;tx.create(intent,{state:'attempted',createdAt:iso()});return true;});
+ if(!firstAttempt)throw Object.assign(Error('Service email delivery needs reconciliation; no blind resend.'),{deliveryUncertain:true});
+ let sent;
+ try{sent=await api(token,'messages/send',{method:'POST',body:JSON.stringify({raw})});}
+ catch(error){throw Object.assign(error,{deliveryUncertain:true});}
+ await intent.set({state:'sent',gmailId:sent.id,completedAt:iso()},{merge:true});
+ return {gmailId:sent.id,reconciled:false};
+}
+module.exports={CALLBACK,SCOPES,status,mailboxAction,callback,tokenFor,importMessage,run,deliver,syncMailbox,recover,sendServiceNotice};

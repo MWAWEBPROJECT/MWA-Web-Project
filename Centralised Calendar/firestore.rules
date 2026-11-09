@@ -81,6 +81,21 @@ service cloud.firestore {
 
     // Forms and responses are served by the scoped registration API only.
     match /registrationForms/{path=**} { allow read, write: if false; }
+    // Niaz reads and writes use privacy/role-scoped trusted API handlers.
+    match /niazSponsors/{path=**} { allow read, write: if false; }
+    match /niazSponsorships/{path=**} { allow read, write: if false; }
+    match /niazEOIs/{path=**} { allow read, write: if false; }
+    match /niazProgrammeSeries/{path=**} { allow read, write: if false; }
+    match /niazEventCoverage/{path=**} { allow read, write: if false; }
+    match /niazNotificationLog/{path=**} { allow read, write: if false; }
+    match /_niazPrivate/{path=**} { allow read, write: if false; }
+    match /_niazOutbox/{path=**} { allow read, write: if false; }
+    match /_niazServiceNotices/{path=**} { allow read, write: if false; }
+    match /_niazImports/{path=**} { allow read, write: if false; }
+    match /_niazContacts/{path=**} { allow read, write: if false; }
+    match /_niazLimits/{path=**} { allow read, write: if false; }
+    match /_niazSandboxLedger/{path=**} { allow read, write: if false; }
+    match /_niazSandboxAssociations/{path=**} { allow read, write: if false; }
     match /registrationListings/{path=**} { allow read, write: if false; }
     match /_registrationRateLimits/{path=**} { allow read, write: if false; }
     match /_registrationPosterCleanup/{path=**} { allow read, write: if false; }

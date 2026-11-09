@@ -11,6 +11,7 @@ import {AuthProvider,useAuth} from '@calendar/contexts/AuthContext.jsx';
 import AdminLogin from './AdminEntry.jsx';
 const EnquiriesPage=lazy(()=>import('./EnquiriesPage.jsx'));
 const Registrations=lazy(()=>import('./Registrations.jsx'));
+const NiazEOI=lazy(()=>import('./NiazEOI.jsx'));
 const RegistrationList=lazy(()=>import('./Registrations.jsx').then(module=>({default:module.RegistrationList})));
 import './contact-form.js';
 import {schemes,defaults,applyAppearance,normaliseSettings} from '../shared/appearance.js';
@@ -57,11 +58,17 @@ if(location.pathname.replace(/\/$/,'')==='/admin-login'){
 
 }
 if(location.pathname.replace(/\/$/,'')==='/enquiries'){document.querySelector('#main').hidden=true;document.querySelector('#enquiries-main').hidden=false;document.querySelector('.skip')?.setAttribute('href','#enquiries-main');}
+const niazRoute=location.pathname.replace(/\/$/,'')==='/niaz';
 const registrationsRoute=location.pathname.replace(/\/$/,'')==='/registrations';
 if(registrationsRoute){
  document.querySelector('#main').hidden=true;
  const main=document.createElement('main');main.id='registrations-main';document.querySelector('#main').after(main);
  document.querySelector('.skip')?.setAttribute('href','#registrations-main');
+}
+if(niazRoute){
+ document.querySelector('#main').hidden=true;
+ const main=document.createElement('main');main.id='niaz-main';document.querySelector('#main').after(main);
+ document.querySelector('.skip')?.setAttribute('href','#niaz-main');
 }
 if(location.pathname.replace(/\/$/,'')==='/member-login')window.MWA_BRIDGE_READY.then(()=>{document.querySelector('[data-action="login"]').click()});
 
@@ -76,7 +83,7 @@ function WebsiteSession(){
 const adminHeader=document.querySelector('.admin-header');
 const sessionRoot=document.createElement('span');sessionRoot.className='admin-header-slot';
 adminHeader.replaceWith(sessionRoot);
-createRoot(sessionRoot).render(<AuthProvider><WorkspaceBoundary><Suspense fallback={<p role="status">Opening your workspace…</p>}><WebsiteSession/></Suspense></WorkspaceBoundary></AuthProvider>);
+createRoot(sessionRoot).render(<AuthProvider><WorkspaceBoundary><Suspense fallback={<p role="status">Opening your workspace…</p>}><WebsiteSession/>{niazRoute&&createPortal(<NiazEOI/>,document.querySelector('#niaz-main'))}</Suspense></WorkspaceBoundary></AuthProvider>);
 mountCalendarShell();
 
 if(location.pathname==='/')import('./community-calendar.jsx').then(module=>module.mountCommunityCalendar()).catch(error=>console.error('Community calendar could not open.',error));

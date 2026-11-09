@@ -8,7 +8,7 @@ export const adminModules=[
  {name:'Events & Bookings Hub',icon:CalendarDays,description:'Manage bookings, venues and event requests.',href:'/calendar/?view=admin'},
  {name:'Contact & Enquiries',icon:Megaphone,description:'Respond to community enquiries in a shared team inbox.',href:'/enquiries/'},
  {name:'Calendar Management',icon:CalendarRange,description:'Manage shared dates and monthly Hijri settings.',href:'/calendar-management/'},
- {name:'Niaz Administration',icon:UtensilsCrossed,description:'Coordinate Niaz arrangements and contributions.'},
+ {name:'Niaz Administration',icon:UtensilsCrossed,description:'Coordinate Niaz arrangements and contributions.',href:'/admin-login?module=niaz'},
  {name:'Volunteer Administration',icon:HandHeart,description:'Organise volunteer teams and responsibilities.'},
  {name:'Member Administration',icon:Users,description:'Manage membership and community records.'},
  {name:'Tools & Automation',icon:Workflow,description:'Manage the admin team and review activity across modules.',href:'/tools-automation/'},
@@ -29,7 +29,7 @@ export default function AdminConsole({email}){
   <div className="admin-console-intro"><div className="eyebrow">MWA · ADMINISTRATION</div><h1 id="admin-console-title">Welcome to Admin Console.</h1><p>Manage MWA’s services and website from one place.</p><span className="admin-console-account">Signed in as {email}</span></div>
   {accessExpired?<p role="status">Your admin module access has expired. Contact the Super Admin to renew it.</p>:accessExpiryDate&&<p>Access expires at the end of {accessExpiryDate} (Sydney time).</p>}
   <div className="admin-module-grid">{adminModules.map(({name,icon:Icon,description,href},index)=>{
-   const allowed=canAccess(ADMIN_MODULES[index].id);const live=!!href;
+   const allowed=canAccess(ADMIN_MODULES[index].id)||(ADMIN_MODULES[index].id==='niaz'&&(canAccess('niaz-read')||canAccess('niaz-finance')));const live=!!href;
    if(!allowed)href=null;
    const Tag=href?'a':'article';
    return <Tag key={name} {...(href?{href}:{})} className={'admin-module'+(href?' is-live':' is-planned')}>

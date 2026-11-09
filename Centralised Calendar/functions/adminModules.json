@@ -18,7 +18,7 @@
     {
       "id": "niaz",
       "name": "Niaz Administration",
-      "live": false
+      "live": true
     },
     {
       "id": "volunteers",
@@ -84,7 +84,9 @@
       "id": "form-insights-export",
       "name": "Form Insights \u2014 exports",
       "live": true
-    }
+    },
+    {"id":"niaz-read","name":"Niaz Administration - oversight read","live":true},
+    {"id":"niaz-finance","name":"Niaz Administration - financial reports","live":true}
   ],
   "legacyModules": [
     "events-bookings",

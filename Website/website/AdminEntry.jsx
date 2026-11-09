@@ -4,6 +4,7 @@ import AdminLoginCard from './AdminLoginCard.jsx';
 import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
 import {adminReturnTarget} from './admin-entry-route.mjs';
 const modules={
+ niaz:lazy(()=>import('./NiazAdmin.jsx')),
  donations:lazy(()=>import('./DonationsAdmin.jsx')),
  'form-builder':lazy(()=>import('./FormBuilder.jsx')),
  'form-insights':lazy(()=>import('./FormInsights.jsx')),

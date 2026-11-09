@@ -4,7 +4,7 @@ import { updateProgramExtras } from '../services/eventsService.js';
 // Admin-only MWA Programs extras: shown as lists in the booking details/form, edited in a separate dialog.
 export const EXTRA_SECTIONS = {
   niazSponsor: {
-    title: 'Niaz sponsor', single: true,
+    title: 'Legacy Niaz sponsor (private)', single: true,
     fields: [['name', 'Sponsor name'], ['phone', 'Phone'], ['notes', 'Notes']]
   },
   reciters: {
@@ -50,6 +50,7 @@ export function ProgramExtrasSummary({ event, extras, onManage }) {
             {items.length
               ? <ul className="extras-list">{items.map((it, i) => <li key={it.id || i}>{describe(key, it)}</li>)}</ul>
               : <div className="muted">None added.</div>}
+            {key==='niazSponsor'&&<a href="/admin-login?module=niaz" target="_top">Open Niaz Administration for reviewed sponsorships</a>}
             {key === 'expenses' && items.length > 0 && <div><b>Total:</b> {money(total(items))}</div>}
           </div>
         );

@@ -9,12 +9,16 @@ import { firebaseConfig } from '../firebase/firebaseConfig.js';
 const APP_NAME = 'mwa-booking-phone-verification';
 const existingApp=getApps().find(app=>app.name===APP_NAME);
 const phoneApp=existingApp||initializeApp(firebaseConfig,APP_NAME);
-if(!existingApp&&import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY)initializeAppCheck(phoneApp,{provider:new ReCaptchaEnterpriseProvider(import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});
 const phoneAuth = getAuth(phoneApp);
 let verifier;
 let persistenceReady;
+let appCheckInitialized = false;
 
 async function ensurePhoneAuth() {
+  if (!existingApp && !appCheckInitialized && import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY) {
+    initializeAppCheck(phoneApp,{provider:new ReCaptchaEnterpriseProvider(import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});
+    appCheckInitialized = true;
+  }
   if (!persistenceReady) persistenceReady = setPersistence(phoneAuth, inMemoryPersistence);
   await persistenceReady;
 }

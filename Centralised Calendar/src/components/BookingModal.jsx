@@ -16,6 +16,7 @@ import {
   PRAYER_OPTIONS, MAX_OFFSET_MINUTES, calculatePrayerTimes, prayerLabel, applyPrayerOffset, resolvePrayerSchedule
 } from '../utils/prayerTimes.js';
 import { ProgramExtrasSummary, ProgramExtrasEditor } from './ProgramExtras.jsx';
+import NiazPublicSponsors from './NiazPublicSponsors.jsx';
 import SeriesDeletePrompt from './SeriesDeletePrompt.jsx';
 import { availableBookingTypes } from '../utils/bookingTypes.js';
 
@@ -469,6 +470,7 @@ export function BookingModalInner({
             )}
           </div>
           {extrasSummary}
+          {!editing.masked&&editing.status==='confirmed'&&(String(editing.departmentName||'').trim().toLowerCase()===PROGRAM_TYPE_NAME||isProgramType(departments,editing.departmentId))&&<NiazPublicSponsors eventId={editing.id}/>}
           {ok && <div className="ok" role="status">{ok}</div>}
           {isAdmin && (
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>

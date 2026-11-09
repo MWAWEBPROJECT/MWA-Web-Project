@@ -20,6 +20,10 @@ test('module permissions, expiry, owner protection and direct-write denial',{ski
     await assert.rejects(getDoc(doc(db,path)),/permission/i);
     await assert.rejects(setDoc(doc(db,path),{answers:{name:'forged'}}),/permission/i);
    }
+   for(const name of ['niazSponsors','niazSponsorships','niazEOIs','niazProgrammeSeries','niazEventCoverage','niazNotificationLog','_niazPrivate','_niazOutbox','_niazServiceNotices','_niazImports','_niazContacts','_niazLimits','_niazSandboxLedger','_niazSandboxAssociations']){
+    await assert.rejects(getDoc(doc(db,name+'/private')),/permission/i);
+    await assert.rejects(setDoc(doc(db,name+'/private'),{status:'approved',confirmedCents:100000}),/permission/i);
+   }
   }
   await seed('users/unverified',{role:str('admin'),email:str('unverified@example.org')});await seed('adminAllowlist/unverified@example.org',{uid:str('unverified'),modules:list(['events-bookings'])});await assert.rejects(getDoc(doc(client('unverified','unverified@example.org',false),'events/private')),/permission/i);assert.equal((await getDoc(doc(client('unverified','unverified@example.org',true),'events/private'))).exists(),true);
   await seed('users/wrong-uid',{role:str('admin'),email:str('bound@example.org')});await seed('users/correct-uid',{role:str('admin'),email:str('bound@example.org')});await seed('adminAllowlist/bound@example.org',{uid:str('correct-uid'),modules:list(['events-bookings'])});await assert.rejects(getDoc(doc(client('wrong-uid','bound@example.org'),'events/private')),/permission/i);assert.equal((await getDoc(doc(client('correct-uid','bound@example.org'),'events/private'))).exists(),true);

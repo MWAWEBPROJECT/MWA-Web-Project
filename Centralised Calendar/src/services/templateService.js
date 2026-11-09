@@ -5,6 +5,20 @@ import { EXPORT_HEADERS, IMPORT_INSTRUCTIONS, templateRows, TEMPLATE_COLUMN_COUN
 
 export const TEMPLATE_LAST_ROW = 501; // header + 500 rows (matches the import cap)
 
+export async function buildImportTemplateWorkbook({sheetName,headers,dataRows,widths,instructions,lists=[],validations=[],lastRow=501,textColumns=[]}){
+  if(!Array.isArray(dataRows)||dataRows.length>lastRow-1)throw new Error('The import template supports up to '+(lastRow-1)+' rows. No partial workbook was created.');
+  const ExcelJS=(await import('exceljs')).default,wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet(sheetName,{views:[{state:'frozen',ySplit:1}]});
+  [headers,...dataRows].forEach(row=>ws.addRow(row));ws.getRow(1).font={bold:true};
+  widths.forEach((width,index)=>{ws.getColumn(index+1).width=width;});
+  for(const column of textColumns)for(let row=2;row<=lastRow;row++)ws.getCell(row,column).numFmt='@';
+  const listSheet=wb.addWorksheet('Lists');lists.forEach(row=>listSheet.addRow(row));listSheet.getRow(1).font={bold:true};
+  for(let column=1;column<=Math.max(2,lists[0]?.length||0);column++)listSheet.getColumn(column).width=28;
+  for(const validation of validations)for(let row=2;row<=lastRow;row++)ws.getCell(row,validation.col).dataValidation={type:'list',allowBlank:true,formulae:[validation.source],showErrorMessage:true,errorStyle:'warning',errorTitle:'Not in list',error:'Pick a value from the list.'};
+  const ins=wb.addWorksheet('Instructions');instructions.forEach(row=>ins.addRow(row));ins.getColumn(1).width=130;ins.getRow(1).font={bold:true,size:14};
+  return wb;
+}
+
 /** Pure description of the dropdown columns (1-based column index -> list ref), testable without ExcelJS. */
 export function templateValidations(deptCount, venueCount) {
   const col = (name) => EXPORT_HEADERS.indexOf(name) + 1;
@@ -26,41 +40,13 @@ export async function buildTemplateWorkbook({ departments = [], venues = [], dat
   if (!Array.isArray(dataRows) || dataRows.length > TEMPLATE_LAST_ROW - 1) {
     throw new Error('The import template supports up to 500 event rows. No partial workbook was created.');
   }
-  const ExcelJS = (await import('exceljs')).default;
   const names = (list) => list.filter(x => x.active !== false).map(x => String(x.name || '').trim()).filter(Boolean).sort((a, b) => a.localeCompare(b));
   const dNames = names(departments); const vNames = names(venues);
 
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Bookings', { views: [{ state: 'frozen', ySplit: 1 }] });
-  const rows = [EXPORT_HEADERS.slice(0, TEMPLATE_COLUMN_COUNT), ...dataRows];
-  rows.forEach(r => ws.addRow(r));
-  ws.getRow(1).font = { bold: true };
   const widths = [8, 30, 18, 18, 12, 12, 11, 8, 12, 11, 11, 8, 12, 11, 14, 14, 12, 12, 20, 30, 18, 22, 16, 30];
-  widths.slice(0, TEMPLATE_COLUMN_COUNT).forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-  // Dates are text so Excel can't reinterpret DD/MM/YYYY (and Hijri dates are not Gregorian dates at all).
-  const dateCol = EXPORT_HEADERS.indexOf('Date') + 1;
-  for (let r = 2; r <= TEMPLATE_LAST_ROW; r += 1) ws.getCell(r, dateCol).numFmt = '@';
-
-  const lists = wb.addWorksheet('Lists');
-  lists.addRow(['Booking Types', 'Venues']);
-  for (let i = 0; i < Math.max(dNames.length, vNames.length); i += 1) lists.addRow([dNames[i] || null, vNames[i] || null]);
-  lists.getRow(1).font = { bold: true };
-  lists.getColumn(1).width = 28; lists.getColumn(2).width = 28;
-
-  for (const v of templateValidations(dNames.length, vNames.length)) {
-    for (let r = 2; r <= TEMPLATE_LAST_ROW; r += 1) {
-      ws.getCell(r, v.col).dataValidation = {
-        type: 'list', allowBlank: true, formulae: [v.source], showErrorMessage: true,
-        errorStyle: 'warning', errorTitle: 'Not in list', error: 'Pick a value from the list.'
-      };
-    }
-  }
-
-  const ins = wb.addWorksheet('Instructions');
-  IMPORT_INSTRUCTIONS.forEach(r => ins.addRow(r));
-  ins.getColumn(1).width = 130;
-  ins.getRow(1).font = { bold: true, size: 14 };
-  return wb;
+  const lists=[['Booking Types','Venues']];
+  for(let i=0;i<Math.max(dNames.length,vNames.length);i++)lists.push([dNames[i]||null,vNames[i]||null]);
+  return buildImportTemplateWorkbook({sheetName:'Bookings',headers:EXPORT_HEADERS.slice(0,TEMPLATE_COLUMN_COUNT),dataRows,widths:widths.slice(0,TEMPLATE_COLUMN_COUNT),instructions:IMPORT_INSTRUCTIONS,lists,validations:templateValidations(dNames.length,vNames.length),lastRow:TEMPLATE_LAST_ROW,textColumns:[EXPORT_HEADERS.indexOf('Date')+1]});
 }
 
 export async function downloadTemplateXlsx({ departments, venues }) {
