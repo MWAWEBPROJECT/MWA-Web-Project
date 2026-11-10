@@ -96,7 +96,22 @@ async function eventDetail(db,eventId,{finance=false,publicOnly=false}={}){
  const pendingEOIs=pending.docs.filter(doc=>doc.data().events.some(item=>item.eventId===eventId&&item.status==='pending')).length;
  const result={event:{id:eventId,title:event.title,startAt:event.startAt,status:event.status,venueName:event.venueName||'',seriesId:event.seriesId||''},assignments:rows,coverage:finance?coverage:safeCoverage,badges:M.badges(rows,{...(finance?coverage:safeCoverage),pendingEOIs,confirmedCents:finance?coverage.confirmedCents||0:0})};
  if(!M.eligible(source,eventId)||coverage.eventReviewRequired)result.badges.push('Event review required');
- if(finance)result.sandboxContributions=(await db.collection('_niazSandboxLedger').where('eventId','==',eventId).limit(501).get()).docs.map(snapData);
+ if(finance){
+  const ledger=await db.collection('_niazSandboxLedger').where('eventId','==',eventId).limit(501).get();
+  if(ledger.size>500)throw M.fault(413,'TEST contribution preview exceeds 500 transactions. Request a scoped report.');
+  result.sandboxContributions=ledger.docs.map(snapData);
+  const sources=ledger.empty?[]:await db.getAll(...ledger.docs.map(doc=>db.doc('_stripeSandboxDonations/'+M.id(doc.data().entry.transactionId))));
+  const grouped=new Map();let unavailable=0;
+  for(let index=0;index<ledger.docs.length;index++){
+   const row=ledger.docs[index].data(),record=sources[index].data();let entry;
+   try{entry=record&&M.donationEntry(record,row.entry.transactionId);}catch{unavailable++;continue;}
+   if(!entry||entry.eventId!==eventId||row.sponsorId!==M.sponsorKey({email:record.email?.toLowerCase(),phone:record.mobile})||Object.keys(entry).some(key=>entry[key]!==row.entry[key])){unavailable++;continue;}
+   if(entry.netCents===0)continue;
+   const current=grouped.get(row.sponsorId)||{id:row.sponsorId,name:typeof record.name==='string'?record.name.slice(0,120):'Name not recorded',netCents:0,references:[],role:'joint',status:'confirmed-test'};
+   current.netCents+=entry.netCents;current.references.push(require('./donation-records').reference(entry.transactionId));grouped.set(row.sponsorId,current);
+  }
+  result.sandboxSponsorPreview={sandbox:true,items:[...grouped.values()],unavailable};
+ }
  return result;
 }
 async function saveCoverage(db,eventId,input,actor,finance){

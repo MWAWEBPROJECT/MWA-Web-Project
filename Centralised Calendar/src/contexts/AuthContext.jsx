@@ -56,7 +56,7 @@ export function AuthProvider({ children }) {
       sessionGeneration.current++;
       const signedOut = hadSession.current && !u;
       setUser(u);setResponseViewer(false);setProfile(null);setLoading(!!u);setSyncing(false);
-      if(signedOut){hadSession.current=false;window.top.location.replace("/");}
+      if(signedOut){hadSession.current=false;setAuthError(current=>current||'Your session has ended. Sign in again to continue in this workspace.');}
       if (!u) {
         bootstrapCheck.current.reset();
         syncedUid.current = null;

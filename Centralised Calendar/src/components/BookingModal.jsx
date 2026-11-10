@@ -1,6 +1,7 @@
 import {auth} from '../firebase/firebase.js';
 import {onAuthStateChanged} from 'firebase/auth';
-import {normalizeBookingPhone} from '../services/phoneBookingAuth.js';
+import ContactVerification from './ContactVerification.jsx';
+import {contactError,verificationPhone} from '../utils/contactVerification.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { HIJRI_MONTHS, hijriToGregorian, getHijriParts, getTodayHijriParts } from '../services/hijriService.js';
@@ -277,7 +278,8 @@ export function BookingModalInner({
       startAt: range.startAt, endAt: range.endAt,
       dateBasis: form.basis,
       hijriDate: form.basis === 'h' ? { day: Number(form.hDay), month: Number(form.hMonth), year: Number(form.hYear) } : null,
-      contactName: form.contactName, contactEmail: form.contactEmail, contactPhone: form.contactPhone,
+      contactName: form.contactName, contactEmail: form.contactEmail,
+      contactPhone: needsVerification && verificationMethod === 'mobile' ? verificationPhone(form.contactPhone) : form.contactPhone,
       notes: form.notes, visibility: form.visibility,
       ...programPayload()
     };
@@ -298,7 +300,9 @@ export function BookingModalInner({
     setErr(''); setOk('');
     setBusy(true);
     try {
-      const contactPhone=verificationMethod==='mobile'?normalizeBookingPhone(form.contactPhone):form.contactPhone;
+      const validation=contactError(verificationMethod,verificationMethod==='email'?form.contactEmail:form.contactPhone);
+      if(validation)throw new Error(validation);
+      const contactPhone=verificationMethod==='mobile'?verificationPhone(form.contactPhone):form.contactPhone;
       const challenge = await startBookingVerification({
         method: verificationMethod,
         sessionId: verificationSessionId.current,
@@ -358,59 +362,13 @@ export function BookingModalInner({
   if(!editing && !locked && needsVerification && (!bookingVerification?.verified || bookingVerification.expiresAt<=resendClock)) return (
     <div className="overlay show"><div className="dlg" role="dialog" aria-modal="true" aria-labelledby="booking-verification-title">
       {closeButton}<h3 id="booking-verification-title">Verify your contact</h3>
-              <div className="card" style={{ marginTop: 12 }}>
-                <p>First verify your email or mobile. Your booking details come next. No booking is submitted at this step.</p>
-                <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 8 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <input type="radio" name="booking-verification-method" style={{ width: 'auto' }} checked={verificationMethod === 'email'} onChange={() => chooseVerificationMethod('email')} />
-                    Verify by email
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <input type="radio" name="booking-verification-method" style={{ width: 'auto' }} checked={verificationMethod === 'mobile'} onChange={() => chooseVerificationMethod('mobile')} />
-                    Verify by mobile
-                  </label>
-                </div>
-                <div className="muted" style={{ marginTop: 8 }}>
-                  Only the selected contact is verified. Any other contact detail remains unverified. The code expires after 10 minutes.
-                </div>
-<label htmlFor="booking-contact">{verificationMethod==='email'?'Email address':'Mobile number'}</label>
-<input id="booking-contact" type={verificationMethod==='email'?'email':'tel'} autoComplete={verificationMethod==='email'?'email':'tel'} placeholder={verificationMethod==='email'?'you@example.com':'0412 345 678'} value={verificationMethod==='email'?form.contactEmail:form.contactPhone} disabled={busy} onChange={e=>set(verificationMethod==='email'?'contactEmail':'contactPhone',e.target.value)}/>
-{verificationMethod==='mobile'&&<p className="muted">Australian 04 numbers and international +61 numbers are accepted.</p>}
-                <div id="booking-phone-recaptcha" />
-                {bookingVerification && (
-                  <>
-                    <div className="muted" style={{ marginTop: 8 }}>
-                      Code sent to {bookingVerification.maskedContact}. Expires {new Date(bookingVerification.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. You can request another code after one minute.
-                    </div>
-                    {!bookingVerification.verified && (
-                      <>
-                        <label htmlFor="booking-verification-code">Verification code</label>
-                        <input
-                          id="booking-verification-code"
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          maxLength={6}
-                          value={verificationCode}
-                          onChange={event => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                        />
-                        <button type="button" className="btn pri" disabled={busy || verificationCode.length !== 6} onClick={confirmPublicVerification}>
-                          Verify code
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
-                {bookingVerification?.verified && <div className="ok" role="status">Contact verified. Submit your request below to finish.</div>}
-                {!bookingVerification?.verified && (
-                  <button type="button" className="btn" disabled={busy || resendClock < resendAt} onClick={startPublicVerification} style={{ marginTop: 8 }}>
-                  {bookingVerification
-                    ? resendClock < resendAt
-                      ? `Send a new code in ${Math.ceil((resendAt - resendClock) / 1000)} seconds`
-                      : 'Send a new code'
-                    : 'Send verification code'}
-                  </button>
-                )}
-              </div>
+      <ContactVerification idPrefix="booking" method={verificationMethod} onMethodChange={chooseVerificationMethod}
+        contact={verificationMethod==='email'?form.contactEmail:form.contactPhone}
+        onContactChange={value=>set(verificationMethod==='email'?'contactEmail':'contactPhone',value)}
+        code={verificationCode} onCodeChange={setVerificationCode} challenge={bookingVerification}
+        verified={!!bookingVerification?.verified} busy={busy} resendAt={resendAt}
+        onSend={startPublicVerification} onVerify={confirmPublicVerification}
+        help="First verify your email or mobile. Your booking details come next. No booking is submitted at this step."/>
       {err&&<div className="error" role="alert">{err}</div>}
     </div></div>
   );

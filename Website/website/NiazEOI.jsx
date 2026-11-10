@@ -4,6 +4,9 @@ import {useAuth} from '@calendar/contexts/AuthContext.jsx';
 import {startBookingVerification,verifyBookingEmailCode,verifyBookingMobile} from '@calendar/services/eventsService.js';
 import {niazProgrammeDate,parseNiazProgrammeLink} from '@calendar/utils/niazProgramme.mjs';
 import {niazApi} from './niaz-client.js';
+import ContactVerification from '@calendar/components/ContactVerification.jsx';
+import {contactError,verificationPhone} from '@calendar/utils/contactVerification.mjs';
+import {NIAZ_ARRANGEMENTS} from './niaz-offer.mjs';
 import './registrations.css';
 import './niaz.css';
 export default function NiazEOI(){
@@ -16,13 +19,14 @@ export default function NiazEOI(){
  const linkHandled=useRef(false);
  const sessionId=useRef(null),requestId=useRef(null),generation=useRef(0);
  if(!sessionId.current&&typeof window!=='undefined'){sessionId.current=crypto.randomUUID().replace(/-/g,'');requestId.current=crypto.randomUUID();}
- const identityReady=authenticated||!!proof;
+ const [arrangement,setArrangement]=useState('');
+ const identityReady=authenticated||!!proof,hasSponsored=selected.some(event=>event.alreadySponsored);
  async function run(action){
   const ticket=generation.current;setBusy(true);setError('');
   try{await action(ticket);}catch(problem){if(ticket===generation.current)setError(problem.message);}
   finally{if(ticket===generation.current)setBusy(false);}
  }
- useLayoutEffect(()=>{generation.current++;setProof(null);setChallenge(null);setHistory(null);setName(session.user?.displayName||'');setContact('');setCode('');setPhone(null);setNotes('');setInKind('');setConsent(false);setNotice('');setError('');setBusy(false);if(authenticated)run(async ticket=>{const data=await niazApi('/mine');if(ticket===generation.current)setHistory(data);});return()=>{generation.current++;};},[session.user?.uid,authenticated]);
+ useLayoutEffect(()=>{generation.current++;setProof(null);setChallenge(null);setHistory(null);setName(session.user?.displayName||'');setContact('');setCode('');setPhone(null);setNotes('');setArrangement('');setInKind('');setConsent(false);setNotice('');setError('');setBusy(false);if(authenticated)run(async ticket=>{const data=await niazApi('/mine');if(ticket===generation.current)setHistory(data);});return()=>{generation.current++;};},[session.user?.uid,authenticated]);
  useEffect(()=>{
   if(linkHandled.current||!programmeLink.requested)return;
   if(!programmeLink.valid){linkHandled.current=true;setLinkError('The programme link is incomplete or invalid. Please find a programme by date.');return;}
@@ -44,10 +48,12 @@ export default function NiazEOI(){
   generation.current++;setContact(value);setProof(null);setChallenge(null);setCode('');setPhone(null);setHistory(null);setBusy(false);
  }
  async function start(ticket){
-  const data=await startBookingVerification({method,sessionId:sessionId.current,contactEmail:method==='email'?contact:'',contactPhone:method==='mobile'?contact:''});
+  const validation=contactError(method,contact);if(validation)throw Error(validation);
+  const contactPhone=method==='mobile'?verificationPhone(contact):'';
+  const data=await startBookingVerification({method,sessionId:sessionId.current,contactEmail:method==='email'?contact.trim():'',contactPhone});
   if(ticket!==generation.current)return;
   setChallenge(data);setResendAt(Date.now()+data.resendAfterMs);
-  if(method==='mobile'){const service=await import('@calendar/services/phoneBookingAuth.js');setPhone(await service.sendBookingPhoneCode(contact));}
+  if(method==='mobile'){const service=await import('@calendar/services/phoneBookingAuth.js');setPhone(await service.sendBookingPhoneCode(contactPhone));}
   setNotice('Verification code sent. Enter it below.');
  }
  async function verify(ticket){
@@ -79,11 +85,7 @@ export default function NiazEOI(){
   <ol className="niaz-steps" aria-label="How to offer sponsorship"><li><ShieldCheck size={20} aria-hidden="true"/><span><strong>1. Verify contact</strong><small>{identityReady?'Verified contact ready':'Email or mobile verification'}</small></span></li><li><CalendarDays size={20} aria-hidden="true"/><span><strong>2. {selected.length?'Review programme':'Find programmes'}</strong><small>{selected.length?selected.length+' programme(s) selected':'Select one or more dates'}</small></span></li><li><HandHeart size={20} aria-hidden="true"/><span><strong>3. Send your offer</strong><small>Coordinator review follows</small></span></li></ol>
   {error&&<p className="niaz-message niaz-error" role="alert">{error}</p>}{notice&&<p className="niaz-message" role="status">{notice}</p>}
   {authenticated&&<p className="niaz-message niaz-verified"><CheckCircle2 size={19} aria-hidden="true"/>Your signed-in contact is verified. You can submit an offer and view your private history.</p>}
-  {!authenticated&&<fieldset className="niaz-panel niaz-verification" disabled={busy}><legend><ShieldCheck size={21} aria-hidden="true"/>Verify your contact</legend><p className="niaz-hint">Use a contact you can access. Verification lets you manage your own offers privately.</p><div className="niaz-field-grid"><label>Verification method<select value={method} onChange={e=>{setMethod(e.target.value);resetContact('');}}><option value="email">Email OTP</option><option value="mobile">Mobile OTP</option></select></label><label>{method==='email'?'Email':'Mobile'}<input autoComplete={method==='email'?'email':'tel'} type={method==='email'?'email':'tel'} value={contact} onChange={e=>resetContact(e.target.value)}/></label></div>
-   <button type="button" className="btn alt" disabled={!contact||busy} onClick={()=>{if(Date.now()<resendAt){setError('Wait one minute before requesting another code.');return;}run(start);}}>Send verification code</button>
-   {challenge&&!proof&&<><label>Verification code<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e=>setCode(e.target.value)}/></label><button className="btn" type="button" onClick={()=>run(verify)}>Verify contact</button></>}
-   {proof&&<p>Verified contact. Refreshing requires verification again.</p>}<div id="booking-phone-recaptcha"/>
-  </fieldset>}
+  {!authenticated&&<ContactVerification idPrefix="niaz" method={method} onMethodChange={value=>{setMethod(value);resetContact('');}} contact={contact} onContactChange={resetContact} code={code} onCodeChange={setCode} challenge={challenge} verified={!!proof} busy={busy} resendAt={resendAt} onSend={()=>run(start)} onVerify={()=>run(verify)} help="Use a contact you can access. Verification lets you manage your own offers privately."/>}
   {linkLoading&&<p className="niaz-message" role="status">Loading the selected programme...</p>}
   {linkError&&<p className="niaz-message" role="alert">{linkError}</p>}
   {selected.length>0&&<section className="niaz-panel" aria-labelledby="niaz-selected-title"><h2 id="niaz-selected-title"><CalendarDays size={22} aria-hidden="true"/>Selected programme{selected.length===1?'':'s'}</h2><p className="niaz-hint">Programme details are checked against the current calendar. Approval and arrangements still require coordinator review.</p>
@@ -99,15 +101,16 @@ export default function NiazEOI(){
   </form>
   <form className="registration-editor niaz-panel" onSubmit={e=>{e.preventDefault();run(async ticket=>{
    const seriesId=type==='permanent'?selected[0]?.seriesId||'':'';
-   await niazApi('/eoi',{name,publicConsent:consent,eventIds:selected.map(event=>event.id),type,seriesId,intent,notes,inKind,requestId:requestId.current},proof);
+   await niazApi('/eoi',{name,publicConsent:consent,eventIds:selected.map(event=>event.id),type,seriesId,intent,notes:intent==='joint'?notes:arrangement,inKind,requestId:requestId.current},proof);
    if(ticket!==generation.current)return;requestId.current=crypto.randomUUID();setSelected([]);setShowProgrammeSearch(true);setNotice('EOI submitted; not yet approved');
    const data=await niazApi('/mine',undefined,proof);if(ticket===generation.current)setHistory(data);
   });}}>
    {!identityReady&&<p className="niaz-message">Verify your contact above to unlock your offer.</p>}
    <fieldset disabled={busy||!identityReady}><legend><HandHeart size={22} aria-hidden="true"/>Your offer</legend><label>Name<input autoComplete="name" required maxLength={160} value={name} onChange={e=>setName(e.target.value)}/></label><p className="niaz-selection" aria-live="polite">{selected.length} selected: {selected.map(event=>event.title).join(', ')}</p>
     <label>Sponsorship type<select value={type} onChange={e=>setType(e.target.value)}><option value="one_time">One-time occurrence(s)</option><option value="annual">Annual - selected occurrences</option><option value="permanent">Permanent series - annual review required</option></select></label>
-    <label>Your request<select value={intent} onChange={e=>setIntent(e.target.value)}><option value="new">Choose another / unsponsored event</option><option value="joint">Request joint sponsorship</option><option value="consideration">Coordinator consideration / reassignment</option></select></label>
-    <label>Offer / arrangement details<textarea maxLength={2000} value={notes} onChange={e=>setNotes(e.target.value)}/></label><label>In-kind provision<textarea maxLength={1000} value={inKind} onChange={e=>setInKind(e.target.value)}/></label><label className="registration-check"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I explicitly consent to showing my name publicly for approved sponsorships. I can revoke this later.</label>
+    <label>Your request<select required value={intent==='new'&&hasSponsored?'':intent} onChange={e=>{if(e.target.value==='new'&&hasSponsored){setSelected([]);setShowProgrammeSearch(true);}setIntent(e.target.value);}}>{hasSponsored&&<option value="" disabled>Select a request for the sponsored programme(s)</option>}<option value="new">{hasSponsored?'Choose another event':'Sponsor selected event'}</option><option value="joint">Request joint sponsorship</option><option value="consideration">Coordinator consideration / reassignment</option></select></label>
+    {hasSponsored&&<p className="niaz-hint">A selected programme already has a sponsor. Choose joint sponsorship or coordinator consideration; additional intake must be enabled. Choose another event to start a new sponsorship.</p>}
+    <label>Offer / arrangement details{intent==='joint'?<textarea maxLength={2000} value={notes} onChange={e=>setNotes(e.target.value)}/>:<select required value={arrangement} onChange={e=>setArrangement(e.target.value)}><option value="">Choose an arrangement</option>{NIAZ_ARRANGEMENTS.map(value=><option key={value}>{value}</option>)}</select>}</label><label>In-kind provision<textarea maxLength={1000} value={inKind} onChange={e=>setInKind(e.target.value)}/></label><p className="niaz-hint">Optional non-cash items or services you can provide, such as ingredients, packaging or transport. Describe your offer; MWA confirms arrangements separately.</p><label className="registration-check"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I explicitly consent to showing my name publicly for approved sponsorships. I can revoke this later.</label>
     <button className="btn" disabled={!selected.length}>Submit EOI</button>
    </fieldset>
   </form>
@@ -115,9 +118,9 @@ export default function NiazEOI(){
   {history&&<article className="registration-card niaz-history"><h2>Your sponsorships and requests</h2><p>Private to your verified contact. Arrangement confirmation is made separately by the coordinator.</p>
    {history.sponsor&&<button className="btn alt" disabled={busy} onClick={()=>run(async ticket=>{await niazApi('/consent',{publicConsent:!history.sponsor.publicConsent},proof);const data=await niazApi('/mine',undefined,proof);if(ticket===generation.current)setHistory(data);})}>{history.sponsor.publicConsent?'Revoke public-name consent':'Allow public-name display'}</button>}
    {history.sponsor&&<><label className="registration-check"><input type="checkbox" disabled={busy} checked={history.sponsor.emailPreferences?.optionalReminders!==false} onChange={e=>changeReminderPreference(e.target.checked)}/>Receive optional three-day follow-up emails</label><p>Essential approval, cancellation, rescheduling and seven-day coordination notices are not marketing and remain enabled.</p></>}
-   {!history.assignments.length&&!history.eois.length&&<p>No sponsorship records for this contact yet.</p>}{history.assignments.map(row=><p key={row.id}>{row.eventTitle||row.eventId}{row.eventStartAt?' · '+new Date(row.eventStartAt).toLocaleString('en-AU',{timeZone:'Australia/Sydney'}):''} · {row.type} · {row.status} · {row.eventStatus} · {row.arrangementConfirmed?'Arrangement confirmed':'Contact coordinator for arrangement status'}</p>)}
+   {!history.assignments.length&&!history.eois.length&&<p>No sponsorship records for this contact yet.</p>}{history.assignments.map(row=><p key={row.id}>{row.eventTitle||'Programme details unavailable'}{row.eventStartAt?' · '+new Date(row.eventStartAt).toLocaleString('en-AU',{timeZone:'Australia/Sydney'}):''} · {row.type} · {row.status} · {row.eventStatus} · {row.arrangementConfirmed?'Arrangement confirmed':'Contact coordinator for arrangement status'}</p>)}
    {history.eois.map(row=><div key={row.id}><h3>Your Niaz request{row.createdAt?' - '+new Date(row.createdAt).toLocaleDateString('en-AU',{timeZone:'Australia/Sydney'}):''}</h3>{row.events.map(event=><p key={event.eventId}>{event.eventTitle||'Programme details unavailable'}{event.eventStartAt?' · '+new Date(event.eventStartAt).toLocaleString('en-AU',{timeZone:'Australia/Sydney'}):''} · {event.status}{event.reason?' · '+event.reason:''}</p>)}{row.events.every(event=>event.status==='pending')&&<button className="btn alt" disabled={busy} onClick={()=>{const value=prompt('Edit your offer details (event choices stay unchanged).',row.notes||'');if(value!==null)run(async ticket=>{await niazApi('/eoi-edit',{id:row.id,revision:row.revision,notes:value,inKind:row.inKind||''},proof);const data=await niazApi('/mine',undefined,proof);if(ticket===generation.current)setHistory(data);});}}>Edit pending offer details</button>}{row.events.some(event=>event.status==='pending')&&<button className="btn alt" disabled={busy} onClick={()=>run(async ticket=>{await niazApi('/withdraw',{id:row.id,revision:row.revision},proof);const data=await niazApi('/mine',undefined,proof);if(ticket===generation.current)setHistory(data);})}>Withdraw pending requests</button>}</div>)}
-   {history.eois.flatMap(row=>(row.alternatives||[]).map((event,index)=><p key={row.id+':'+index}>Proposed alternative: {event.title||event.eventId} · {event.reason}. Use Find programmes for that date and submit a new EOI to accept; this proposal does not move your sponsorship.</p>))}
+   {history.eois.flatMap(row=>(row.alternatives||[]).map((event,index)=><p key={row.id+':'+index}>Proposed alternative: {event.title||'Programme details unavailable'} · {event.reason}. Use Find programmes for that date and submit a new EOI to accept; this proposal does not move your sponsorship.</p>))}
    {history.assignmentNext&&<button className="btn alt" disabled={busy} onClick={()=>run(async ticket=>{const data=await niazApi('/mine?assignmentAfter='+encodeURIComponent(history.assignmentNext),undefined,proof);if(ticket===generation.current)setHistory(current=>({...current,assignments:[...current.assignments,...data.assignments],assignmentNext:data.assignmentNext}));})}>Load more sponsorship history</button>}
    {history.eoiNext&&<button className="btn alt" disabled={busy} onClick={()=>run(async ticket=>{const data=await niazApi('/mine?eoiAfter='+encodeURIComponent(history.eoiNext),undefined,proof);if(ticket===generation.current)setHistory(current=>({...current,eois:[...current.eois,...data.eois],eoiNext:data.eoiNext}));})}>Load more request history</button>}
   </article>}

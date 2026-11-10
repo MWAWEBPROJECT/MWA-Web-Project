@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext.jsx';
 import './styles.css';
 import './theme.css';
 import './website-appearance.css';
+import '../../Website/shared/admin-ui.css';
 import {calendarWebsiteUrl} from '@mwa/calendar-entry';
 
 function PageReady(){useEffect(()=>{const frame=requestAnimationFrame(()=>{if(window.parent!==window)window.parent.postMessage({type:'mwa-page-ready'},location.origin)});return()=>cancelAnimationFrame(frame)},[]);return null;}

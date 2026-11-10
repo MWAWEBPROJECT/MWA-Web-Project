@@ -57,7 +57,7 @@ export default function LoginCard({ user, login, loginWithGoogle, logout, authEr
         <div className="login-hero" aria-hidden="true">
           <div className="login-badge">🔐</div>
           <h3 className="login-title">Admin sign in</h3>
-          <p className="login-sub">MWA Central Calendar</p>
+          <p className="login-sub">MWA Admin Console</p>
         </div>
         <div className="login-form-area">
           <p className="muted login-lede">Sign in to review booking requests, manage venues and booking types, and adjust Hijri settings.</p>

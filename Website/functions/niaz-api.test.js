@@ -82,6 +82,66 @@ test('Sandbox ledger idempotency/repeated contributions/reversal stays isolated 
  assert.equal([...db.store.keys()].some(key=>key.startsWith('niazSponsorships/')||key.startsWith('niazEventCoverage/')),false);
  assert.equal((await L.projectSandboxDonation(db,'general',{...d,niaz:{scope:'general'}})).ignored,true);
 });
+test('Finance TEST sponsor preview groups verified payments and joint supporters without changing actual sponsorship',async()=>{
+ const db=database({'events/event1':event,'niazSponsors/actual':{name:'Actual private sponsor',active:true,publicConsent:false},'niazSponsorships/actual':{sponsorId:'actual',eventId:'event1',status:'approved',role:'joint'}});
+ const donation={name:'Synthetic TEST donor',email:'test@example.org',mobile:'+61412345678',fund:'Niaz Contribution',niaz:{scope:'event',eventId:'event1'},amount:10000,status:'paid'};
+ for(const [id,record] of [['test1',donation],['test2',{...donation,amount:5000,refundedCents:1000}],['test3',{...donation,name:'Second TEST donor',email:'second@example.org'}]]){
+  db.store.set('_stripeSandboxDonations/'+id,record);await L.projectSandboxDonation(db,id,record);
+ }
+ const before=JSON.stringify([...db.store]),originalGetAll=db.getAll;let batches=0;
+ db.getAll=async(...refs)=>{batches++;return originalGetAll(...refs);};
+ const detail=await A.eventDetail(db,'event1',{finance:true}),preview=detail.sandboxSponsorPreview;
+ assert.equal(preview.sandbox,true);assert.equal(preview.unavailable,0);assert.equal(preview.items.length,2);
+ const first=preview.items.find(row=>row.name===donation.name);
+ assert.equal(first.netCents,14000);assert.deepEqual(first.references,['MWA-TEST1','MWA-TEST2']);assert.equal(first.role,'joint');assert.equal(first.status,'confirmed-test');
+ assert.equal(batches,1);assert.equal(JSON.stringify([...db.store]),before,'Preview reads must not write or claim sponsorship');
+ assert.equal(detail.assignments.length,1);assert.equal(detail.assignments[0].sponsor.name,'Actual private sponsor');
+ assert.equal(detail.coverage.confirmedCents,undefined);assert.equal(db.store.has('niazEventCoverage/event1'),false);
+ assert.ok(!JSON.stringify(preview).includes('@'));assert.ok(!JSON.stringify(preview).includes(donation.mobile));
+ const publicDetail=await A.eventDetail(db,'event1',{publicOnly:true,finance:true});
+ assert.deepEqual(publicDetail.sponsors.map(row=>row.name),['Private sponsor']);assert.equal(publicDetail.sandboxSponsorPreview,undefined);assert.equal(publicDetail.sandboxContributions,undefined);
+ const reader=await A.eventDetail(db,'event1');assert.equal(reader.sandboxSponsorPreview,undefined);assert.equal(reader.sandboxContributions,undefined);
+ assert.equal(batches,1,'Non-finance/public readers never fetch private donation sources');
+});
+test('TEST sponsor preview excludes full refunds and waits for matching source/ledger reconciliation',async()=>{
+ const db=database({'events/event1':event});
+ const donation={name:'Synthetic TEST donor',email:'test@example.org',fund:'Niaz Contribution',niaz:{scope:'event',eventId:'event1'},amount:10000,status:'paid'};
+ db.store.set('_stripeSandboxDonations/test1',donation);await L.projectSandboxDonation(db,'test1',donation);
+ const preview=async()=>(await A.eventDetail(db,'event1',{finance:true})).sandboxSponsorPreview;
+ assert.equal((await A.eventDetail(db,'event1',{publicOnly:true})).sponsors.length,0);
+ const eoi=await A.submitEOI(db,{name:'Additional supporter',eventIds:['event1'],type:'one_time',intent:'joint',requestId:'test-preview-intake',publicConsent:false},person);
+ assert.equal(eoi.events[0].status,'pending','Positive TEST coverage must not close actual EOI intake');
+ for(const patch of [{refundedCents:10000},{status:'pending'},{email:'changed@example.org'},{fund:'General Donation'},{niaz:{scope:'event',eventId:'event2'}},{refundedCents:20000}]){
+  db.store.set('_stripeSandboxDonations/test1',{...donation,...patch});
+  assert.deepEqual(await preview(),{sandbox:true,items:[],unavailable:1});
+ }
+ db.store.delete('_stripeSandboxDonations/test1');assert.deepEqual(await preview(),{sandbox:true,items:[],unavailable:1});
+ const reversed={...donation,refundedCents:10000};db.store.set('_stripeSandboxDonations/test1',reversed);await L.projectSandboxDonation(db,'test1',reversed);
+ assert.deepEqual(await preview(),{sandbox:true,items:[],unavailable:0});
+ assert.equal((await db.collection('_niazSandboxLedger').get()).size,1,'Reversal history is retained');
+ assert.equal((await db.collection('niazSponsorships').get()).size,0);
+});
+test('TEST preview stays finance-gated on the authenticated event HTTP route',async()=>{
+ const uid='synthetic-reader',email='reader@example.org',db=database({'events/event1':event,['users/'+uid]:{role:'admin',email},'calendarSettings/auth':{}});
+ const donation={name:'Finance-only TEST name',email:'test@example.org',fund:'Niaz Contribution',niaz:{scope:'event',eventId:'event1'},amount:10000,status:'paid'};
+ db.store.set('_stripeSandboxDonations/test1',donation);await L.projectSandboxDonation(db,'test1',donation);
+ const opts={db,getAuth:()=>({verifyIdToken:async()=>({uid,email,email_verified:true,firebase:{sign_in_provider:'google.com'}})}),origins:new Set(['https://refreshed.muhammadiwelfare.org.au'])};
+ for(const module of ['niaz-read','niaz','niaz-finance']){
+  db.store.set('adminAllowlist/'+email,{uid,modules:[module]});
+  const req={path:'/api/niaz/event',method:'GET',query:{eventId:'event1'},get:key=>({'Authorization':'Bearer synthetic','Origin':'https://refreshed.muhammadiwelfare.org.au'}[key])};
+  const res={code:200,set(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
+  await A.handle(req,res,opts);assert.equal(res.code,200);
+  assert.equal(JSON.stringify(res.body).includes(donation.name),module==='niaz-finance');
+  assert.equal(res.body.sandboxSponsorPreview?.items.length,module==='niaz-finance'?1:undefined);
+ }
+});
+test('TEST sponsor preview is bounded and empty finance detail needs no source fetch',async()=>{
+ const db=database({'events/event1':event});db.getAll=async()=>assert.fail('No unbounded/empty source read');
+ assert.deepEqual((await A.eventDetail(db,'event1',{finance:true})).sandboxSponsorPreview,{sandbox:true,items:[],unavailable:0});
+ for(let i=0;i<501;i++)db.store.set('_niazSandboxLedger/'+i,{eventId:'event1'});
+ await assert.rejects(A.eventDetail(db,'event1',{finance:true}),error=>error.status===413);
+ assert.equal((await A.eventDetail(db,'event1')).sandboxSponsorPreview,undefined);
+});
 test('Own-contact history never returns another sponsor; event edits flag review without reallocation',async()=>{
  const db=database({'events/event1':event,'niazSponsors/owner':{ownerKey:person.ownerKey,active:true},'niazSponsors/other':{ownerKey:'someone-else',active:true},'niazSponsorships/a':{sponsorId:'owner',eventId:'event1',status:'approved',revision:1},'niazSponsorships/b':{sponsorId:'other',eventId:'event1',status:'approved',revision:1}});
  const own=await A.own(db,person);assert.equal(own.assignments.length,1);assert.equal(own.assignments[0].id,'a');
