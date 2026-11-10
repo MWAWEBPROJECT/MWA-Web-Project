@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
-export default function NiazPublicSponsors({eventId}){
+import {niazOfferUrl} from '../utils/niazProgramme.mjs';
+export default function NiazPublicSponsors({eventId,startAt}){
  const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
  useEffect(()=>{
   let controller=null,disposed=false;setData(null);setError('');
@@ -20,6 +21,6 @@ export default function NiazPublicSponsors({eventId}){
  return <section className="card" aria-label="Niaz Sponsor(s)">
   <h3>Niaz Sponsor(s)</h3>{error?<p role="status">{error}</p>:!data?<p role="status">Loading sponsorships...</p>:data.sponsors.length?<ul>{data.sponsors.map((sponsor,index)=><li key={index}>{sponsor.name} · {sponsor.type==='one_time'?'One-time':sponsor.type==='annual'?'Annual':'Permanent'} · {sponsor.role}</li>)}</ul>:<p>No approved sponsorships listed.</p>}
   {error&&<button type="button" className="btn alt" onClick={()=>setRetry(value=>value+1)}>Retry sponsorship details</button>}
-  <a href="/niaz/" target="_top">Offer Niaz sponsorship</a>
+  <a className="text-link" href={niazOfferUrl(eventId,startAt)} target="_top">Offer Niaz sponsorship</a>
  </section>;
 }

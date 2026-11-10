@@ -1,1 +1,105 @@
-.niaz-admin{max-width:1000px;margin:auto;padding-inline:20px}.niaz-filters{display:flex;flex-wrap:wrap;gap:16px}.niaz-filters label{flex:1;min-width:180px}.niaz-table{overflow:auto;max-height:420px;margin:16px 0}.niaz-table table{border-collapse:collapse;width:100%}.niaz-table th,.niaz-table td{text-align:left;border-bottom:1px solid var(--line);padding:10px;white-space:normal;overflow-wrap:anywhere}.niaz-table th{position:sticky;top:0;background:var(--surface)}.niaz-admin .registration-list-item{width:100%;text-align:left;color:var(--ink);margin:8px 0}.niaz-admin nav a{align-self:center}.niaz-admin label{display:grid;gap:6px;margin:12px 0}.niaz-admin .registration-check{display:flex}.niaz-admin input,.niaz-admin select,.niaz-admin textarea{max-width:100%}.niaz-admin fieldset{min-width:0}
+.niaz-page{color:var(--ink);line-height:1.6}
+.niaz-page.niaz-admin{max-width:1120px;padding:0}
+.niaz-page.niaz-public{max-width:900px}
+.niaz-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:24px 0}
+.niaz-heading>div{min-width:0}
+.niaz-heading h1{margin:12px 0 16px}
+.niaz-heading p,.niaz-section-heading p,.niaz-hint{color:var(--muted);font-size:14px;line-height:1.7}
+.niaz-heading p{max-width:740px;margin:0}
+.niaz-page .eyebrow{font-size:11px;letter-spacing:.13em;color:var(--accent);font-weight:600}
+.niaz-access{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px;max-width:240px;font-size:12px;color:var(--muted);padding:10px 0}
+.niaz-access span,.niaz-badge{display:inline-block;border:1px solid var(--line);border-radius:20px;padding:4px 10px;background:var(--soft);font-size:12px;color:var(--ink);line-height:1.5}
+.niaz-message{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;background:var(--soft);color:var(--ink);padding:16px 18px;margin:18px 0;font-size:14px;overflow-wrap:anywhere}
+.niaz-context,.niaz-verified{display:flex;align-items:flex-start;gap:12px}
+.niaz-context>svg,.niaz-verified>svg{flex-shrink:0;margin-top:3px;color:var(--accent)}
+.niaz-context p{margin:4px 0;color:var(--muted)}
+.niaz-context>p{margin:0}
+.niaz-error{border-left-color:var(--danger,#b94141)}
+.niaz-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:28px 0 16px}
+.niaz-tabs button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:13px;cursor:pointer;min-height:44px}
+.niaz-tabs button[aria-pressed=true]{background:var(--primary);border-color:var(--primary);color:var(--on-primary,#fff)}
+.niaz-tabs button:hover:not(:disabled):not([aria-pressed=true]){background:var(--soft);border-color:var(--accent)}
+.niaz-page button:disabled,.niaz-page fieldset:disabled .btn{cursor:not-allowed;opacity:.65}
+.niaz-page :is(button,a,input,select,textarea,summary):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.niaz-toolbar{justify-content:space-between;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.niaz-page .text-link,.niaz-page .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;max-width:100%;overflow-wrap:anywhere;white-space:normal}
+.niaz-back-link{margin-bottom:10px}
+.niaz-section-heading,.niaz-record-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:26px 0 18px}
+.niaz-section-heading h2{margin:0;font-size:23px;letter-spacing:-.025em}
+.niaz-section-heading p{margin:5px 0 0}
+.niaz-section-heading>.niaz-badge,.niaz-record-heading>.niaz-badge{flex-shrink:0}
+.niaz-filters{display:grid;grid-template-columns:2fr 1fr 1fr;gap:16px;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--surface);margin:18px 0}
+.niaz-page label{display:grid;gap:7px;margin:14px 0;font-size:14px;font-weight:500;min-width:0}
+.niaz-filters label{margin:0}
+.niaz-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea){box-sizing:border-box;width:100%;min-width:0;max-width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:inherit;font-weight:400;line-height:1.5}
+.niaz-page textarea{min-height:100px;resize:vertical}
+.niaz-page input::placeholder,.niaz-page textarea::placeholder{color:var(--muted);opacity:1}
+.niaz-page input[type=file]{font-size:12px;padding:8px}
+.niaz-page input::file-selector-button{border:1px solid var(--line);border-radius:6px;padding:6px 10px;background:var(--soft);color:var(--ink);cursor:pointer;margin-right:8px;font:inherit}
+.niaz-page fieldset{min-width:0;margin:0}
+.niaz-page fieldset legend{font-size:20px;font-weight:600;letter-spacing:-.02em;color:var(--ink);padding:0 6px}
+.niaz-page fieldset legend svg{display:inline-block;vertical-align:middle;margin-right:8px;color:var(--accent)}
+.niaz-page .registration-check{display:flex;align-items:flex-start;gap:10px;font-weight:400}
+.niaz-page :is(input[type=checkbox],input[type=radio]){width:18px;height:18px;flex-shrink:0;margin:4px 0 0;accent-color:var(--primary)}
+.niaz-import-tools{align-items:center;margin:20px 0}
+.niaz-import-tools>label{flex:1 1 270px;margin:0}
+.niaz-import-tools>.niaz-hint{flex-basis:100%;margin:0}
+.niaz-page .registration-editor,.niaz-panel{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:24px;margin:24px 0}
+.niaz-page .registration-editor>fieldset{border:0;padding:0}
+.niaz-page .registration-card{padding:24px;border-radius:14px;margin:18px 0;overflow-wrap:anywhere}
+.niaz-record-heading{margin:0 0 12px}
+.niaz-record-heading h2{font-size:20px;letter-spacing:-.02em;margin:0}
+.niaz-reference{display:block;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.niaz-record p{margin:12px 0;font-size:14px}
+.niaz-record .registration-actions{margin-top:16px}
+.niaz-event-review,.niaz-page details,.niaz-history>div{border-top:1px solid var(--line);padding-top:14px;margin-top:18px}
+.niaz-page summary{cursor:pointer;font-size:14px;font-weight:500;padding:8px 0}
+.niaz-empty{border:1px dashed var(--line);background:var(--soft);border-radius:12px;padding:28px;text-align:center;margin:24px 0;color:var(--muted);font-size:14px}
+.niaz-empty>svg{color:var(--accent)}
+.niaz-empty h3{color:var(--ink);margin:10px 0 6px;font-size:18px}
+.niaz-empty p{margin:0}
+.niaz-page .registration-list-item{display:block;width:100%;text-align:left;color:var(--ink);margin:10px 0;padding:14px;border:1px solid var(--line);border-radius:9px;background:var(--soft);font:inherit;cursor:pointer}
+.niaz-table{overflow:auto;max-height:420px;margin:16px 0;border:1px solid var(--line);border-radius:9px}
+.niaz-table table{border-collapse:collapse;width:100%;font-size:13px}
+.niaz-table th,.niaz-table td{text-align:left;border-bottom:1px solid var(--line);padding:12px;white-space:normal;overflow-wrap:anywhere}
+.niaz-table th{position:sticky;top:0;background:var(--soft)}
+.niaz-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));list-style:none;padding:0;margin:26px 0;gap:12px}
+.niaz-steps li{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);background:var(--surface);padding:16px;border-radius:12px}
+.niaz-steps svg{flex-shrink:0;color:var(--accent);margin-top:3px}
+.niaz-steps strong{font-size:14px;display:block}
+.niaz-steps small{font-size:12px;color:var(--muted);display:block;margin-top:3px}
+.niaz-field-grid{display:grid;grid-template-columns:1fr 2fr;gap:18px}
+.niaz-page .niaz-panel h2{display:flex;align-items:center;gap:10px;font-size:22px;margin:0 0 8px;letter-spacing:-.025em}
+.niaz-panel h2>svg{color:var(--accent);flex-shrink:0}
+.niaz-public .niaz-hint{margin:8px 0 18px}
+.niaz-page .event-choice-list{margin:22px 0 14px;padding:0;border:0}
+.niaz-page .event-choice-list legend{font-size:15px;letter-spacing:0;padding:0}
+.niaz-page .event-choice{display:flex;align-items:flex-start;gap:12px;padding:16px;background:var(--paper);border:1px solid var(--line);border-radius:10px;font-weight:500}
+.niaz-page .event-choice:has(input:checked){border-color:var(--accent);background:var(--soft)}
+.niaz-page .event-choice small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:4px}
+.niaz-selection{padding:12px 14px;border:1px solid var(--line);border-radius:9px;background:var(--soft);font-size:14px;overflow-wrap:anywhere}
+.niaz-selected-programmes{list-style:none;padding:0;margin:18px 0}
+.niaz-selected-programmes li{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 0;border-top:1px solid var(--line)}
+.niaz-selected-programmes li>div{min-width:0;overflow-wrap:anywhere}
+.niaz-selected-programmes p{color:var(--muted);font-size:14px;margin:6px 0 10px}
+.niaz-history h2{font-size:24px;letter-spacing:-.025em}
+.niaz-history h3{font-size:17px}
+.niaz-history .btn+.btn{margin-left:8px}
+@media(max-width:760px){
+ .niaz-heading{flex-direction:column;gap:8px;margin:20px 0}
+ .niaz-access{max-width:none;justify-content:flex-start;padding:0}
+ .niaz-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .niaz-tabs button{justify-content:flex-start;text-align:left;padding:10px;font-size:12px}
+ .niaz-tabs button svg{flex-shrink:0;width:16px}
+ .niaz-filters{grid-template-columns:1fr 1fr;padding:16px;gap:12px}
+ .niaz-filters label:first-child{grid-column:1/-1}
+ .niaz-section-heading,.niaz-record-heading{flex-wrap:wrap;gap:8px}
+ .niaz-page .registration-editor,.niaz-panel,.niaz-page .registration-card{padding:18px}
+ .niaz-steps{grid-template-columns:1fr;gap:8px}
+ .niaz-steps li{padding:12px 16px}
+ .niaz-steps small{margin-top:0}
+ .niaz-field-grid{grid-template-columns:1fr;gap:0}
+ .niaz-message{padding:14px}
+ .niaz-history .btn+.btn{margin:8px 0 0}
+ .niaz-selected-programmes li{flex-wrap:wrap}
+}

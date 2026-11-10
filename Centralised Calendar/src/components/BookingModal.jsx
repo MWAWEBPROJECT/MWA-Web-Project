@@ -470,7 +470,7 @@ export function BookingModalInner({
             )}
           </div>
           {extrasSummary}
-          {!editing.masked&&editing.status==='confirmed'&&(String(editing.departmentName||'').trim().toLowerCase()===PROGRAM_TYPE_NAME||isProgramType(departments,editing.departmentId))&&<NiazPublicSponsors eventId={editing.id}/>}
+          {!editing.masked&&editing.status==='confirmed'&&(String(editing.departmentName||'').trim().toLowerCase()===PROGRAM_TYPE_NAME||isProgramType(departments,editing.departmentId))&&<NiazPublicSponsors eventId={editing.id} startAt={editing.startAt}/>}
           {ok && <div className="ok" role="status">{ok}</div>}
           {isAdmin && (
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
