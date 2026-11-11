@@ -14,7 +14,8 @@ const sectionIcons={sponsors:Users,dashboard:CalendarDays,assignments:ClipboardL
 const sectionHelp={sponsors:'Manage sponsor contacts, consent and import records.',dashboard:'Review monthly sponsorship and arrangement coverage.',assignments:'Read-only records of event sponsorships and changes. Use the monthly dashboard to edit current arrangements.',eois:'Review verified-contact offers independently for each programme.',programmes:'Manage yearly programme commitments. Review next-year occurrences before confirming them.',notifications:'Review queued notices and attention records. Acknowledgment is not resolution.'};
 export default function NiazAdmin(){
  const notificationTools=new URLSearchParams(location.search).get('tools')==='notifications';
- const initialTab=notificationTools?'notifications':'eois';
+ const requestedTab=new URLSearchParams(location.search).get('tab');
+ const initialTab=notificationTools?'notifications':['eois','dashboard','programmes','assignments','sponsors'].includes(requestedTab)?requestedTab:'eois';
  const session=useAuth(),allowed=session.isAdmin&&(!notificationTools||session.canAccess('tools-automation'))&&['niaz','niaz-read','niaz-finance'].some(id=>session.canAccess(id));
  const [permissions,setPermissions]=useState(null),[tab,setTab]=useState(initialTab),[rows,setRows]=useState([]),[next,setNext]=useState(null),[draft,setDraft]=useState(null),[pageDirty,setDirty]=useState(false),[editorDirty,setEditorDirty]=useState({}),[query,setQuery]=useState(''),[status,setStatus]=useState(''),[year,setYear]=useState('');
  const importFile=useRef(null);

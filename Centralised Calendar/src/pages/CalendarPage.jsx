@@ -39,7 +39,7 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
   const [hCursor, setHCursor] = useState(() => gregorianCursorToHijri(gCursor.year, gCursor.month, hijriOverrides));
   const [deptFilter, setDeptFilter] = useState(() => new Set(departments.map(d => d.id)));
   const [venueFilter, setVenueFilter] = useState('');
-  const [modal, setModal] = useState(null); // { editing } | { newOnDate }
+  const [modal, setModal] = useState(() => typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('action')==='new-booking'?{editing:null,newOnDate:null}:null); // { editing } | { newOnDate }
   const [pdfOpen, setPdfOpen] = useState(false);
 
   const [view, setView] = useState('month'); // 'month' | 'week' | 'day'

@@ -15,6 +15,7 @@ const AdminConsole=lazy(()=>import('./AdminConsole.jsx'));
 export default function AdminEntry(){
  const session=useAuth(),query=new URLSearchParams(location.search);
  const returnTo=adminReturnTarget(query.get('returnTo'));
+ const destination=returnTo?.includes('module=donations')?'Donation Administration':returnTo?.includes('module=niaz')?'Niaz Administration':returnTo?.includes('module=form-builder')?'Form Builder':returnTo?.includes('insights')?'Form Insights':returnTo?.startsWith('/cms')?'Website CMS':returnTo?.startsWith('/enquiries')?'Contact & Enquiries':returnTo?.startsWith('/tools-automation')?'Tools & Automation':returnTo?.startsWith('/calendar-management')?'Calendar Management':'Events & Bookings';
  useEffect(()=>{window.mwaPageReady?.();},[]);
  useEffect(()=>{if(!session.loading&&session.isAdmin&&returnTo)location.replace(returnTo);},[session.loading,session.isAdmin,returnTo]);
  if(session.loading)return <div className="admin-welcome"><AdminBackButton/><p>Checking your admin session…</p></div>;
@@ -22,5 +23,5 @@ export default function AdminEntry(){
  const Module=session.isResponseViewer?modules['form-builder']:modules[query.get('module')];
  if(session.isResponseViewer||session.isAdmin&&Module)return <Module/>;
  if(session.isAdmin)return <AdminConsole email={session.user?.email}/>;
- return <div className="mwa-admin-auth"><AdminBackButton/><div className="admin-auth-intro"><div className="eyebrow">ONE MWA · ONE ADMIN ACCOUNT</div><h1>Admin login.</h1><p>Use your existing MWA calendar admin account. After signing in, open the calendar workspace or manage website content.</p></div><AdminLoginCard {...session}/></div>;
+ return <div className="mwa-admin-auth"><AdminBackButton/><div className="admin-auth-intro"><div className="eyebrow">ONE MWA · ONE ADMIN ACCOUNT</div><h1>Admin login.</h1><p>{returnTo?'Sign in to continue to '+destination+'. Your account must have access to this module.':'Use your MWA admin account to open the modules assigned to you.'}</p></div><AdminLoginCard {...session}/></div>;
 }

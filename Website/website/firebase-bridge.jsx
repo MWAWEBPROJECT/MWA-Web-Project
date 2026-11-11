@@ -1,3 +1,4 @@
+import './mwa-assistant-mount.jsx';
 import './YouTubePanel.jsx';
 import {normaliseTextSize,applyTextSize} from '../shared/text-size.js';
 import {recordActivity} from '@calendar/services/auditService.js';
