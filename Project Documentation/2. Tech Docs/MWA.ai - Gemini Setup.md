@@ -1,6 +1,6 @@
 # MWA.ai — Gemini setup and activation
 
-Status: Gemini function and enabled website deployed on 11 November 2026. Automated attestation was rejected; normal human-browser acceptance requested and pending. Canonical release/acceptance status is in the Codex and Copilot Handover.
+Status: deployed on 11 November 2026. User confirmed their normal browser receives an answer and an Open Niaz donation form button for the Niaz donation request. Canonical release/acceptance status is in the Codex and Copilot Handover.
 
 
 ## Activation configuration — 11 November 2026
@@ -93,3 +93,8 @@ Released function: mwaAiChat, ACTIVE revision mwaaichat-00001-qav. Source implem
 Read-only configuration check confirms the web app's Enterprise App Check key matches the build, TTL 3600 seconds, and refreshed.muhammadiwelfare.org.au / mwa-community-web.web.app / muhammadiwelfare.org.au are allowed domains; no testing override exists. No App Check enforcement change or debug-token bypass was made. If normal users report verification failures, investigate their browser/provider assessment before any security policy change. UI now gives refresh/browser-verification guidance, while Contact MWA remains available.
 
 Initial auth readiness no longer clears an anonymous chat; actual uid/admin/module changes still clear it. Automated regression covers startup, permission order stability, permission removal, account switching and sign-out. Normal signed-in admin access and private record viewing are not claimed tested by the synthetic model-context check.
+
+
+### User-confirmed normal-browser check — 11 November 2026
+
+User confirmed “Yes, it answers and shows the button” for “I want to donate for Niaz.” This supersedes the pending human-browser status above for that response/button check. It does not confirm clicking the link, making a payment, or a real admin sign-in continuation. Historical automated Chromium attestation failure is not reclassified as success. No security settings changed for this confirmation. Initial limitations and future review backlog remain in force.
