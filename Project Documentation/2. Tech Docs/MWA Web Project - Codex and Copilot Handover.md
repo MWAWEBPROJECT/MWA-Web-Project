@@ -3,9 +3,17 @@
 
 # MWA Web Project — Codex / Copilot handover
 
-## Release authorised — 11 November 2026 — deployment in progress
+## Niaz redesign and direct-admin approval — RELEASED — 11 November 2026
 
-User explicitly requested deployment and Git push after the verified local implementation. Remote fetch confirms HEAD and origin/main equal before this release. Deploy scope: Website Hosting; websiteCmsApi, onNiazEventChanged, niazSandboxDonationProjection, niazReminderPreparation, niazNotificationWorker; Calendar submitBooking, createRecurringBooking, bookingSubmissionDelivery and bookingSubmissionRetry. No rules/index changes, notification activation, Stripe live switch or data backfill. Prior 97 automated/57 browser checks and integrated build passed; diff check remains clean. This section supersedes local-only wording below; successful release identifiers and checks will be recorded after deployment, not assumed here.
+User explicitly authorised deployment and Git push. Source commit **e62a7401c1a4264e20899cd7ad9f3df4b51ec565** pushed successfully to MWAWEBPROJECT/MWA-Web-Project `main`; fetched origin/main equalled the starting HEAD before commit. Canonical checkout was clean after the source push. This release record is a subsequent documentation-only commit; it supersedes the historical local-only restrictions/status below.
+
+**Deployment completed:** Website Hosting (`mwa-community-web`, including embedded Calendar); Website codebase functions websiteCmsApi, onNiazEventChanged, niazSandboxDonationProjection, niazReminderPreparation, niazNotificationWorker; Calendar functions submitBooking, createRecurringBooking, bookingSubmissionDelivery and bookingSubmissionRetry. All nine report ACTIVE in australia-southeast1. Initial website function filter was rejected before changes; explicit `functions:mwa-website:<name>` selectors succeeded. Calendar CLI warned extension-list fetch failed, but all four selected function updates explicitly succeeded. No extension installation was requested.
+
+**Live verification:** all **72/72** served files at https://refreshed.muhammadiwelfare.org.au match the tested local dist byte-for-byte; `/`, `/niaz`, `/admin`, `/calendar-app/` return HTTP 200. Prior local verification remains **97/97 automated tests, 16/16 Niaz browser checks, 41/41 sibling-module/CMS browser checks**, integrated build and syntax/diff checks passed. No real customer booking, payment, OTP or email was generated as an acceptance test. Authenticated production interactions are not claimed verified by route/asset checks.
+
+**Configuration and scope:** notification settings unchanged (previously OFF); Stripe remains sandbox. No rule/index deployment, data backfill, live donation adapter, notification activation or unrelated module implementation. Existing old pending records are not automatically approved. Remaining work is the separately described live donation linkage and real-provider acceptance, when authorised.
+
+**Evidence:** C:/Users/sajja/AppData/Local/Temp/mwa-niaz-release-website-functions.log, mwa-niaz-release-calendar-functions.log, mwa-niaz-release-hosting.log, mwa-release-functions.json and mwa-release-live-verification.json. Verification script: mwa-release-verify.py. No Hosting release/version identifier was emitted in the captured normal CLI log; do not substitute the previous release's identifiers.
 
 ## Codex Niaz redesign — 11 November 2026 — local implementation verified, NOT deployed
 
