@@ -1,6 +1,6 @@
 # MWA.ai — Gemini setup and activation
 
-Status: activation authorised; cloud permission and real model checks complete, deployment in progress. Canonical release status is in the Codex and Copilot Handover.
+Status: Gemini function and enabled website deployed on 11 November 2026. Automated attestation was rejected; normal human-browser acceptance requested and pending. Canonical release/acceptance status is in the Codex and Copilot Handover.
 
 
 ## Activation configuration — 11 November 2026
@@ -9,7 +9,7 @@ Status: activation authorised; cloud permission and real model checks complete, 
 - Runtime: existing `178942309467-compute@developer.gserviceaccount.com`, explicitly pinned in mwaAiChat. No new service account or developer impersonation grant.
 - Additional role: project custom role `mwaAiInference` containing **only** `aiplatform.endpoints.predict`, bound to that runtime. Existing Firestore permissions unchanged. Because the runtime is shared, this inference permission also applies to other functions using it; revisit dedicated identity isolation with a separately reviewed IAM plan.
 - The original proposal to create a dedicated runtime with Vertex AI User/Datastore User and a developer act-as binding was rejected by automatic approval review as broader than the general setup approval. None of that rejected command ran. The narrower inference-only alternative succeeded.
-- TTL requested for `_mwaAiUsage.expiresAt`; final enabled state and deployment verification recorded in handover.
+- TTL ACTIVE for `_mwaAiUsage.expiresAt`; usage counters expire after 48 hours, with asynchronous deletion.
 - Runtime env: MWA_AI_ENABLED=true, MWA_AI_MODEL=gemini-3.5-flash-lite, MWA_AI_LOCATION=global. Website/.env.local: VITE_MWA_AI_ENABLED=true; existing App Check key retained. Environment files stay Git-ignored. No API key used.
 - Supported-model reference: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash-lite (GA; documented retirement 21 July 2027 or later). Verify again before model changes.
 
@@ -34,7 +34,7 @@ Use project `project-7a4fb531-414f-4ade-88e` in MWA Google Cloud (not the separa
 5. Set server environment in Website/functions/.env.project-7a4fb531-414f-4ade-88e: `MWA_AI_ENABLED=true`, `MWA_AI_MODEL=<verified-supported-model>`, `MWA_AI_LOCATION=global` (or a supported region). Cloud Functions supplies GCLOUD_PROJECT. Using global does not guarantee processing stays in Australia; agree regional requirements before enabling. No API key is required.
 6. Set `VITE_MWA_AI_ENABLED=true` in Website/.env.local. Keep the existing App Check Enterprise site-key configuration. Verify the actual web app/domain is registered in Firebase App Check; `mwaAiChat` always enforces App Check. Do not weaken enforcement to make testing pass.
 7. Rebuild Website (`npm run build`), deploy `functions:mwa-website:mwaAiChat` and `hosting:website` from Website. No Calendar backend deployment is required; embedded Calendar navigation changes are in the Website build. Deploy backend first. Do not deploy other functions just because the export shares index.js.
-8. Test from the real registered website browser using non-sensitive questions: Niaz donation, event sponsorship, ambiguous “sponsor my event”, venue booking, resources, unavailable task. Confirm anonymous users see no protected module buttons, permitted admins see only their assigned modules, and sign-out clears the chat. Verify direct-form navigation does not submit or skip verification. Check failure/limit handling and mobile keyboard/layout. Then record source/release identifiers in the shared handover.
+8. Test from the real registered website browser using non-sensitive questions: Niaz donation, event sponsorship, ambiguous “sponsor my event”, venue booking, resources, unavailable task. Confirm anonymous users receive sign-in continuation buttons rather than direct protected module buttons, permitted admins see only their assigned modules, and sign-out clears the chat. Verify direct-form navigation does not submit or skip verification. Check failure/limit handling and mobile keyboard/layout. Then record source/release identifiers in the shared handover.
 
 ## Limits and privacy
 
@@ -84,3 +84,12 @@ User explicitly requested recording these restrictions for later review. Activat
 | Model maintenance | Verify current supported model at activation | Review retirement dates, response quality and pricing periodically |
 
 Limits are currently source constants in Website/functions/mwa-ai.js; activation/model/location are environment settings. Frontend visibility is VITE_MWA_AI_ENABLED. No control panel for these limits exists yet. Rebuild/redeploy the affected component after any change, and update the canonical handover.
+
+
+## Deployment acceptance and browser attestation
+
+Released function: mwaAiChat, ACTIVE revision mwaaichat-00001-qav. Source implementation c0782ec; guest-session follow-up 847ed97. Final Hosting served 71/71 files identical to the tested enabled build, with main/Niaz/admin/embedded-calendar route checks returning 200. 20/20 focused regression tests passed; six direct Gemini model checks passed. Google rejected the automated Chromium browser's App Check exchange (403 App attestation failed), and the callable correctly returned 401 with no token. This does not prove normal users are blocked or that the runtime-to-Gemini path has passed. A human-browser smoke check was requested and remains pending in this checkpoint.
+
+Read-only configuration check confirms the web app's Enterprise App Check key matches the build, TTL 3600 seconds, and refreshed.muhammadiwelfare.org.au / mwa-community-web.web.app / muhammadiwelfare.org.au are allowed domains; no testing override exists. No App Check enforcement change or debug-token bypass was made. If normal users report verification failures, investigate their browser/provider assessment before any security policy change. UI now gives refresh/browser-verification guidance, while Contact MWA remains available.
+
+Initial auth readiness no longer clears an anonymous chat; actual uid/admin/module changes still clear it. Automated regression covers startup, permission order stability, permission removal, account switching and sign-out. Normal signed-in admin access and private record viewing are not claimed tested by the synthetic model-context check.
