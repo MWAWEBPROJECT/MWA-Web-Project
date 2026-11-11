@@ -98,3 +98,10 @@ Initial auth readiness no longer clears an anonymous chat; actual uid/admin/modu
 ### User-confirmed normal-browser check — 11 November 2026
 
 User confirmed “Yes, it answers and shows the button” for “I want to donate for Niaz.” This supersedes the pending human-browser status above for that response/button check. It does not confirm clicking the link, making a payment, or a real admin sign-in continuation. Historical automated Chromium attestation failure is not reclassified as success. No security settings changed for this confirmation. Initial limitations and future review backlog remain in force.
+
+
+### Public programme answers and navigation fixes — 11 November 2026
+
+MWA.ai can now request a server-generated list for today, this week or next week. Weeks are Monday–Sunday in Australia/Sydney. Queries use existing events with a 201-document bound, return at most eight confirmed MWA Programs entries, exclude explicit private/masked entries, and expose only titles/times. Results are formatted on the server and not sent to Gemini. Larger results link to the public calendar; individual event deep links and arbitrary/historical date-range searches remain future work. Query failures show an unavailable message, never an invented empty schedule. Other live data (prayer times, private donations etc.) remains navigation-only. This supersedes the earlier blanket navigation-only statement for these three public programme periods only.
+
+Corrected the client link guard rejecting URLs containing r; safe admin-login continuations are now visible. Donation deep-link layout stabilisation, UTF-8 copy fixes and supplied helper avatar added. Actual human sign-in continuation remains an acceptance check; no private data/actions used for testing.
