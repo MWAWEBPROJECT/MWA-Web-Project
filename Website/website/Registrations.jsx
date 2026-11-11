@@ -1,3 +1,4 @@
+import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
 import React,{useEffect,useRef,useState} from 'react';
 import {registrationApi,expiryLabel,isFormOpen} from './registration-client.js';
 import {validateAnswers} from '../functions/registration-model.mjs';
@@ -59,8 +60,8 @@ export default function Registrations(){
  }
  const ConfirmationHeading=shared?'h1':'h2';
  const logo=typeof document!=='undefined'?document.querySelector('img.official-logo')?.getAttribute('src'):'';
- return <section className="registrations-page wrap">{(!shared||!reference)&&<><div className="registration-brand">{logo&&<img className="registration-logo" data-cms-image="logo" src={logo} alt="Muhammadi Welfare Association logo"/>}<div className="eyebrow">{shared?'MUHAMMADI WELFARE ASSOCIATION':'MWA COMMUNITY'}</div></div><h1>{form?.title||'Registrations'}</h1></>}
- {!shared&&<p><a className="text-link" href={id?'/registrations/':'/#today-panels'}>{id?'All registrations':'Back to Home'}</a></p>}
+ return <section className="registrations-page wrap">{!shared&&<AdminBackButton label={id?'All registrations':'Back to Home'} onBack={()=>location.assign(id?'/registrations/':'/#today-panels')}/>}{(!shared||!reference)&&<><div className="registration-brand">{logo&&<img className="registration-logo" data-cms-image="logo" src={logo} alt="Muhammadi Welfare Association logo"/>}<div className="eyebrow">{shared?'MUHAMMADI WELFARE ASSOCIATION':'MWA COMMUNITY'}</div></div><h1>{form?.title||'Registrations'}</h1></>}
+
  {!id?<RegistrationList/>:<>
  {loading&&<p role="status">Loading form...</p>}{error&&<p role="alert">{error}</p>}
  {reference?<div role="status" className="registration-card"><ConfirmationHeading>Thank you.</ConfirmationHeading><p>We have received your response. Your reference number is <strong>{reference}</strong>.</p></div>

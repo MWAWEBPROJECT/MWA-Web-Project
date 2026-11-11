@@ -3,4 +3,4 @@
 .mwa-admin-back:disabled{opacity:.5;cursor:wait}
 #cms-close[hidden],#close-modal[hidden]{display:none}
 
-.mwa-admin-back{margin-left:auto;margin-right:0}
+.mwa-admin-back{margin-left:0;margin-right:auto}

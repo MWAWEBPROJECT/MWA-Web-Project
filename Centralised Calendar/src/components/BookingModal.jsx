@@ -1,3 +1,4 @@
+import AdminBackButton from './AdminBackButton.jsx';
 import {auth} from '../firebase/firebase.js';
 import {onAuthStateChanged} from 'firebase/auth';
 import ContactVerification from './ContactVerification.jsx';
@@ -879,6 +880,7 @@ export function BookingModalInner({
 
           {repeating && preview && (
             <div className="card" style={{ marginTop: 14 }}>
+              <AdminBackButton disabled={busy} onBack={() => setPreview(null)}/>
               <b>This will create {preview.count} event(s)</b>
               {preview.conflicts > 0 && <span className="conflict-badge">{preview.conflicts} with conflicts</span>}
               <div className="muted">{form.basis === 'h' ? 'Hijri-anchored: Gregorian dates are derived from the Hijri dates and current adjustment.' : 'Gregorian-anchored: Hijri dates are derived from each Gregorian date.'}</div>
@@ -892,7 +894,7 @@ export function BookingModalInner({
               </ol>
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <button type="button" className="btn pri" disabled={busy || locked} onClick={() => handleRecurringCreate(true)}>Confirm &amp; create {preview.count} event(s)</button>
-                <button type="button" className="btn" disabled={busy} onClick={() => setPreview(null)}>Back</button>
+
               </div>
             </div>
           )}
