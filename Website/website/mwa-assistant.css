@@ -3,3 +3,8 @@
 .mwa-ai-avatar{display:block;position:relative;width:42px;height:42px;flex:none;overflow:hidden;border-radius:50%;background:#fff;border:1px solid var(--line)}.mwa-ai-avatar img{position:absolute;width:112%;max-width:none;height:auto;left:-6%;top:-27%}.mwa-ai-launcher{padding:7px 15px 7px 7px}.mwa-ai-header .mwa-ai-avatar{width:46px;height:46px}
 
 .mwa-khadim-name{white-space:nowrap;font-family:system-ui,sans-serif;font-weight:600}.mwa-khadim-script{font-family:"Segoe Print","Bradley Hand","URW Chancery L",cursive;font-size:1.15em;font-weight:600;line-height:1.2}.mwa-ai-header h2{font-size:20px}
+
+.mwa-ai-dock{position:fixed;right:18px;bottom:18px;z-index:90;display:flex;align-items:center;max-width:calc(100vw - 24px);border:1px solid var(--line);border-radius:40px;background:var(--surface);color:var(--ink);box-shadow:0 5px 24px #0003}
+.mwa-ai-dock .mwa-ai-launcher{position:static;box-shadow:none;border:0;background:transparent;touch-action:none;user-select:none;min-height:56px;min-width:56px;padding:7px;gap:9px;font-family:inherit;font-size:15px}
+.mwa-ai-dock .mwa-ai-launcher img{pointer-events:none}.mwa-ai-dock.is-dragging .mwa-ai-launcher{cursor:grabbing}.mwa-ai-collapse{display:grid;place-items:center;min-width:44px;min-height:44px;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer}.mwa-ai-collapse:hover{background:var(--soft)}.mwa-ai-collapse:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.mwa-ai-compose .mwa-ai-launcher-option{display:block;margin-top:8px;padding:5px 0;border:0;background:transparent;color:var(--ink);font-size:12px;text-decoration:underline;text-underline-offset:3px}

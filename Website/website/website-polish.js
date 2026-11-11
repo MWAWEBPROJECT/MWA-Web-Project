@@ -21,3 +21,17 @@ window.addEventListener('hashchange',updateCurrentLink);updateCurrentLink();
 document.querySelector('a[href="/#community-news"]')?.addEventListener('click',()=>{document.querySelector('[data-panel="2"]')?.click();});
 
 const chromeHeader=document.querySelector('.header');new ResizeObserver(()=>document.documentElement.style.setProperty('--mwa-chrome-height',chromeHeader.getBoundingClientRect().height+'px')).observe(chromeHeader);
+
+// Reveal the specific carousel card, correcting asynchronous layout shifts briefly.
+let stopPathwayFocus=()=>{};
+function focusLinkedPathway(){
+ stopPathwayFocus();if(location.hash!=='#tutoring')return;
+ const target=document.getElementById('tutoring');if(!target)return;
+ const align=()=>target.scrollIntoView({block:'start',inline:'start',behavior:'instant'});
+ const observer=new ResizeObserver(align);observer.observe(document.body);
+ const events=['wheel','touchstart','pointerdown','keydown'];
+ const stop=()=>{observer.disconnect();clearTimeout(timer);events.forEach(name=>window.removeEventListener(name,stop));};
+ const timer=setTimeout(stop,10000);stopPathwayFocus=stop;
+ events.forEach(name=>window.addEventListener(name,stop,{once:true,passive:true}));requestAnimationFrame(align);
+}
+window.addEventListener('hashchange',focusLinkedPathway);focusLinkedPathway();

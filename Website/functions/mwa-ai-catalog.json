@@ -43,9 +43,9 @@
   },
   {
     "id": "school",
-    "title": "School & tutoring",
+    "title": "MWA Saturday School",
     "href": "/#school",
-    "description": "Find MWA Saturday School and tutoring information and enquiry routes."
+    "description": "Find Saturday School information and enquiries. For MWA Tutoring use the tutoring destination."
   },
   {
     "id": "resources",
@@ -217,8 +217,8 @@
   {
     "id": "tutoring",
     "title": "MWA Tutoring",
-    "href": "/#school",
-    "description": "Find tutoring information in the school/services panels."
+    "href": "/#tutoring",
+    "description": "Open the MWA Tutoring panel directly for tutoring information and enquiries. Separate from Saturday School."
   },
   {
     "id": "volunteer",

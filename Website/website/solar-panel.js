@@ -24,6 +24,7 @@ export function updateSun(now = new Date()) {
  marker.setAttribute('transform',`translate(${state.x} ${state.y})`);
  marker.style.opacity = state.visible ? '1' : '0';
  const format = value => {const [h,m] = value.split(':').map(Number); return `${h%12||12}:${String(m).padStart(2,'0')} ${h<12?'am':'pm'}`;};
+ for(const [key,prayer] of [['prayer_0','fajr'],['prayer_2','zohrain'],['prayer_4','maghreb']]){const node=document.querySelector('[data-prayer-time="'+key+'"]');if(node)node.textContent=format(state.times[prayer]);}
  document.querySelector('#solar-sunrise').textContent = format(state.times.sunrise);
  document.querySelector('#solar-sunset').textContent = format(state.times.sunset);
  document.querySelector('#solar-status').textContent = state.label;
