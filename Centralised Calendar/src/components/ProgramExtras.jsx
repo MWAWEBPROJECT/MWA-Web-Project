@@ -112,7 +112,7 @@ export function ProgramExtrasEditor({ eventId, section, initial, onClose, onSave
         {section === 'expenses' && <div style={{ marginTop: 8 }}><b>Total:</b> {money(total(rows))}</div>}
         {err && <div className="err">{err}</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button type="button" className="btn pri" disabled={busy} onClick={save}>Save</button>
+          <button type="button" className="btn" disabled={busy} onClick={()=>{setRows(sec.single?[blank(section)]:[]);setErr('');}}>Clear</button><button type="button" className="btn pri" disabled={busy} onClick={save}>Save</button>
           <button type="button" className="btn" disabled={busy} onClick={onClose}>Cancel</button>
         </div>
       </div>

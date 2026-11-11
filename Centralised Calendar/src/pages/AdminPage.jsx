@@ -115,7 +115,7 @@ function LoginCard({ user, login, loginWithGoogle, logout, authError, passwordLo
           )}
           {message && <div className="err login-err" role="alert">⚠ {message}</div>}
           {pendingLink ? (
-            <form onSubmit={link} noValidate className="login-link">
+            <form onSubmit={link} noValidate className="login-link"><button type="button" className="btn alt" disabled={busy} onClick={()=>{setLinkPassword('');setErr('');}}>Clear</button>
               <p className="login-link-note">
                 <strong>{pendingLink.email}</strong> already has a password account here. Enter that password once to connect
                 your Google sign-in to it. After this you will only need Google.
@@ -144,7 +144,7 @@ function LoginCard({ user, login, loginWithGoogle, logout, authError, passwordLo
               {!passwordLoginDisabled && (
                 <details className="login-alt">
                   <summary>Use email and password instead</summary>
-                  <form onSubmit={submit} noValidate>
+                  <form onSubmit={submit} noValidate><button type="button" className="btn alt" disabled={busy} onClick={()=>{setEmail('');setPassword('');setErr('');}}>Clear</button><button type="button" className="btn alt" disabled={busy} onClick={()=>{setEmail('');setPassword('');location.assign('/');}}>Cancel</button>
                     <div className="field">
                       <label htmlFor="admin-email">Email</label>
                       <input id="admin-email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} disabled={busy} required />
@@ -274,7 +274,7 @@ function VenuesTab({ venues }) {
         <div><label>Name</label><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
         <div><label>Capacity</label><input type="number" value={form.capacity} onChange={e => setForm(f => ({ ...f, capacity: e.target.value }))} /></div>
         <div><label>Buffer (hours, after booking)</label><input type="number" step="0.25" min="0" value={form.bufferHours} onChange={e => setForm(f => ({ ...f, bufferHours: e.target.value }))} /></div>
-        <button className="btn pri" type="submit">Add venue</button>
+        <button type="button" className="btn alt" disabled={false} onClick={()=>{setForm({name:'',capacity:'',bufferHours:'',openingHours:''});}}>Clear</button><button type="button" className="btn alt" disabled={false} onClick={()=>{setForm({name:'',capacity:'',bufferHours:'',openingHours:''});}}>Cancel</button><button className="btn pri" type="submit">Add venue</button>
       </form>
       <table>
         <thead><tr><th>Name</th><th>Capacity</th><th>Buffer</th><th>Active</th><th></th></tr></thead>
@@ -294,7 +294,7 @@ function VenuesTab({ venues }) {
                 <input type="checkbox" checked={v.active !== false} onChange={e => updateVenue(v.id, { active: e.target.checked })} />
               </td>
               <td style={{ display: 'flex', gap: 6 }}>
-                <button className="btn pri" type="button" onClick={() => saveEdit(v.id)}>Save</button>
+                <button type="button" className="btn alt" disabled={false} onClick={()=>{setEditForm({...editForm,name:'',capacity:'',bufferHours:'',openingHours:''});}}>Clear</button><button className="btn pri" type="button" onClick={() => saveEdit(v.id)}>Save</button>
                 <button className="btn" type="button" onClick={cancelEdit}>Cancel</button>
               </td>
             </tr>
@@ -351,7 +351,7 @@ function DepartmentsTab({ departments }) {
       <form className="card" onSubmit={add} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div><label>Name</label><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
         <PaletteShadePicker value={form.paletteTone} onChange={paletteTone=>setForm(f=>({...f,paletteTone}))}/>
-        <button className="btn pri" type="submit">Add booking type</button>
+        <button type="button" className="btn alt" disabled={false} onClick={()=>{setForm({name:'',paletteTone:departments.length%6});}}>Clear</button><button type="button" className="btn alt" disabled={false} onClick={()=>{setForm({name:'',paletteTone:departments.length%6});}}>Cancel</button><button className="btn pri" type="submit">Add booking type</button>
       </form>
       <table>
         <thead><tr><th>Name</th><th>Palette shade</th><th>Active</th><th></th></tr></thead>
@@ -362,7 +362,7 @@ function DepartmentsTab({ departments }) {
               <td><PaletteShadePicker compact value={editForm.paletteTone} onChange={paletteTone=>setEditForm(f=>({...f,paletteTone}))}/></td>
               <td><input type="checkbox" checked={d.active !== false} onChange={e => updateDepartment(d.id, { active: e.target.checked })} /></td>
               <td style={{ display: 'flex', gap: 6 }}>
-                <button className="btn pri" type="button" onClick={() => saveEdit(d.id)}>Save</button>
+                <button type="button" className="btn alt" disabled={false} onClick={()=>{setEditForm({...editForm,name:''});}}>Clear</button><button className="btn pri" type="button" onClick={() => saveEdit(d.id)}>Save</button>
                 <button className="btn" type="button" onClick={cancelEdit}>Cancel</button>
               </td>
             </tr>

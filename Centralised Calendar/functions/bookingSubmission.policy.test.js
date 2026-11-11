@@ -1,0 +1,13 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const {createBookingSubmissionService}=require('./bookingSubmission');
+function fixture(overlaps=[]){
+ const records=new Map(),messages=[];let serial=0;
+ const ref=path=>({id:path.split('/').at(-1),path,get:async()=>({exists:records.has(path),data:()=>records.get(path)})});
+ const db={collection:name=>({doc:id=>ref(name+'/'+(id||'row'+(++serial)))}),runTransaction:async fn=>{const pending=[];const tx={get:r=>r.get(),create:(r,value)=>pending.push(()=>records.set(r.path,value)),update:(r,value)=>pending.push(()=>records.set(r.path,{...records.get(r.path),...value}))};await fn(tx);pending.forEach(fn=>fn());}};
+ const service=createBookingSubmissionService({db,FieldValue:{serverTimestamp:()=>new Date().toISOString()},Timestamp:{fromMillis:x=>x},HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},bookingVerification:{},prepareBookingPayload:async data=>({prepared:data,venue:{name:'Hall'},department:{name:'Events Booking'},overrides:[]}),findOverlaps:async()=>overlaps,resolveBufferHours:()=>0,refreshConflictNeighborhood:async()=>{},issueLink:async()=>({}),sendAll:async list=>messages.push(...list.filter(Boolean)),notify:{submissionRequester:()=>({type:'pending'}),submissionAdmin:()=>({type:'approval-request'}),decisionRequester:()=>({type:'confirmed'})},hijriInfoFor:()=>null,dateKeyOf:()=>'',logger:{error:()=>{}},sanitizeVisibility:()=>null,auditEntry:x=>x});
+ return {service,records,messages};
+}
+const payload={title:'Synthetic booking',venueId:'hall',startAt:'2027-01-01T01:00:00Z',endAt:'2027-01-01T02:00:00Z',contactEmail:'synthetic@example.org'};
+test('Authorised admin booking is confirmed without entering public approval queue',async()=>{const f=fixture(),result=await f.service(payload,{isAdmin:true,uid:'admin',email:'admin@example.org'});assert.equal(result.status,'confirmed');assert.equal(f.records.get('events/'+result.id).status,'confirmed');assert.deepEqual(f.messages,[{type:'confirmed'}]);});
+test('Signed-in non-admin remains pending and cannot request confirmed status',async()=>{const f=fixture(),result=await f.service({...payload,status:'confirmed'},{isAdmin:false,authenticated:true,uid:'member'});assert.equal(result.status,'pending');assert.deepEqual(f.messages.map(m=>m.type),['pending','approval-request']);});
+test('Admin confirmation cannot bypass an existing venue clash',async()=>{const f=fixture([{id:'existing'}]);await assert.rejects(f.service(payload,{isAdmin:true}),/overlapping/);assert.equal(f.records.size,0);assert.equal(f.messages.length,0);});

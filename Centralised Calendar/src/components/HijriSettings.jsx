@@ -48,7 +48,7 @@ export default function HijriTab({ adjustedBy, hijriOverrides, onReloadSettings 
           </select>
         </div>
         <div><label>Day 1 fell on (Gregorian)</label><input type="date" value={form.gDate} onChange={e => setForm(f => ({ ...f, gDate: e.target.value }))} /></div>
-        <button className="btn pri" disabled={busy} type="submit">Save override</button>
+        <button type="button" className="btn alt" disabled={busy} onClick={()=>{setForm({...form,hYear:'',gDate:''});setErr('');}}>Clear</button><button type="button" className="btn alt" disabled={busy} onClick={()=>{setForm(blankForm());setErr('');}}>Cancel</button><button className="btn pri" disabled={busy} type="submit">Save override</button>
       </form>
       {err && <div className="err">{err}</div>}
       <table>

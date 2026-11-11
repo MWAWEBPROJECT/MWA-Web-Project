@@ -2,3 +2,5 @@
 .mwa-admin-back:focus-visible{outline:3px solid var(--accent,#176446);outline-offset:3px}
 .mwa-admin-back:disabled{opacity:.5;cursor:wait}
 #cms-close[hidden],#close-modal[hidden]{display:none}
+
+.mwa-admin-back{margin-left:auto;margin-right:0}

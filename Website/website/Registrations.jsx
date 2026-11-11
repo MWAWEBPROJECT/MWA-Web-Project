@@ -70,7 +70,7 @@ export default function Registrations(){
  {!isFormOpen(form,time)?<p role="status">This form has expired and no longer accepts responses.</p>
  :<form onSubmit={submit} noValidate><fieldset disabled={busy}><legend className="registration-sr-only">Your answers</legend><p>Fields marked * are required.</p><RegistrationFields fields={form.fields} answers={answers} errors={errors} onChange={(key,value)=>setAnswers(current=>({...current,[key]:value}))}/>
  <label className="registration-honeypot" aria-hidden="true">Leave this blank<input ref={honeypot} tabIndex={-1} autoComplete="off" name="website"/></label>
- <button className="btn" type="submit">{busy?'Submitting...':'Submit response'}</button></fieldset></form>}</>}
+ <button type="button" className="btn alt" disabled={busy} onClick={()=>{setAnswers({});setErrors({});setError('');}}>Clear</button><button type="button" className="btn alt" disabled={busy} onClick={()=>{if(confirm('Cancel this response? Unsaved answers will be lost.'))location.assign('/registrations/');}}>Cancel</button><button className="btn" type="submit">{busy?'Submitting...':'Submit response'}</button></fieldset></form>}</>}
  </>}
  </section>;
 }

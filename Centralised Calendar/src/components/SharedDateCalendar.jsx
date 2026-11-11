@@ -1,3 +1,4 @@
+import NiazPublicSponsors from './NiazPublicSponsors.jsx';
 import './shared-calendar.css';
 import {useEffect,useMemo,useState} from 'react';
 import {ChevronLeft,ChevronRight,CalendarDays} from 'lucide-react';
@@ -38,6 +39,6 @@ export default function SharedDateCalendar({overrides=[],events=[],reference=fal
       <p className="shared-date-selection">{selected?`${dateLabel(selected)} · ${hText(selected)}`:`Dates follow MWA’s monthly moon-sighting settings.`}</p>
       {selected&&<button className="lb lb-outline lb-sm" onClick={()=>setSelected(null)}>Clear date selection</button>}
     </section>
-    {!reference&&<aside className="shared-programmes" aria-label="Confirmed MWA programmes"><div className="section-eyebrow"><CalendarDays size={16}/> MWA Programs</div><h3>{selected?dateLabel(selected):'This month’s gatherings'}</h3><p className="muted">{loading?'Loading the shared calendar…':error||`${shown.length} confirmed programme${shown.length===1?'':'s'}`}</p><div className="shared-programme-list">{shown.map(event=><article className="shared-programme" key={event.id}><small>{dateLabel(dateKeyInOrgTz(event.startAt))} · {timeKeyInOrgTz(event.startAt)}</small><h4>{event.title}</h4><p>{hText(dateKeyInOrgTz(event.startAt))}</p><p>{event.venueName || 'MWA Centre'}</p>{event.programDetails&&<p>{event.programDetails}</p>}</article>)}{!loading&&!error&&!shown.length&&<p className="muted">No confirmed MWA programmes for this selection.</p>}</div><a href="/calendar/" className="text-link">Open Events & Bookings ↗</a></aside>}
+    {!reference&&<aside className="shared-programmes" aria-label="Confirmed MWA programmes"><div className="section-eyebrow"><CalendarDays size={16}/> MWA Programs</div><h3>{selected?dateLabel(selected):'This month’s gatherings'}</h3><p className="muted">{loading?'Loading the shared calendar…':error||`${shown.length} confirmed programme${shown.length===1?'':'s'}`}</p><div className="shared-programme-list">{shown.map(event=><article className="shared-programme" key={event.id}><small>{dateLabel(dateKeyInOrgTz(event.startAt))} · {timeKeyInOrgTz(event.startAt)}</small><h4>{event.title}</h4><p>{hText(dateKeyInOrgTz(event.startAt))}</p><p>{event.venueName || 'MWA Centre'}</p>{event.programDetails&&<p>{event.programDetails}</p>}<NiazPublicSponsors compact eventId={event.id} startAt={event.startAt}/></article>)}{!loading&&!error&&!shown.length&&<p className="muted">No confirmed MWA programmes for this selection.</p>}</div><a href="/calendar/" className="text-link">Open Events & Bookings ↗</a></aside>}
   </div>;
 }

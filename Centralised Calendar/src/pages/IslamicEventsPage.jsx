@@ -172,7 +172,7 @@ export default function IslamicEventsPage({ hijriOverrides = [], departments = [
             </div>
             <p aria-live="polite">Gregorian date ({year} AH): {previewError || preview}</p>
             <div className="observance-edit-actions">
-              <button type="submit" className="lb lb-default" disabled={busy || !!previewError}><Save />{busy ? 'Adding...' : 'Add event'}</button>
+              <button type="button" className="btn alt" disabled={busy} onClick={()=>{setDraft({...draft,name:''});setSaveError('');}}>Clear</button><button type="submit" className="lb lb-default" disabled={busy || !!previewError}><Save />{busy ? 'Adding...' : 'Add event'}</button>
               <button type="button" className="lb lb-outline" onClick={cancel} disabled={busy}><X />Cancel</button>
             </div>
           </form>
@@ -199,7 +199,7 @@ export default function IslamicEventsPage({ hijriOverrides = [], departments = [
                           {ISLAMIC_EVENT_CATEGORIES.map(category => <option key={category}>{category}</option>)}
                         </select></label>
                         <div className="observance-edit-actions">
-                          <button className="lb lb-default" onClick={save} disabled={busy || !!previewError}><Save />{busy ? 'Saving...' : 'Save'}</button>
+                          <button type="button" className="btn alt" disabled={busy} onClick={()=>{setDraft({...draft,name:''});setSaveError('');}}>Clear</button><button className="lb lb-default" onClick={save} disabled={busy || !!previewError}><Save />{busy ? 'Saving...' : 'Save'}</button>
                           <button className="lb lb-outline" onClick={cancel} disabled={busy}><X />Cancel</button>
                         </div>
                       </div>

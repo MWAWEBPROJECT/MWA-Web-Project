@@ -525,7 +525,7 @@ export function BookingModalInner({
         verificationSessionId: verificationSessionId.current
       };
       const res = await submitBooking(payload);
-      setOk(res?.hasConflict
+      setOk(res?.status==='confirmed'?'Booking confirmed. No further approval is required.':res?.hasConflict
         ? 'Request submitted as Pending. Note: it overlaps another booking at this venue — the admin team will review it.'
         : 'Request submitted as Pending. You will be notified once it is reviewed.');
       setLocked(true);
@@ -827,7 +827,7 @@ export function BookingModalInner({
                     <label>Create as</label>
                     <select value={rep.status} onChange={e => setR('status', e.target.value)}>
                       <option value="confirmed">Confirmed</option>
-                      <option value="pending">Pending</option>
+
                     </select>
                     <div className="muted">Up to one year ahead (yearly: 5 occurrences). {form.basis === 'h' ? 'Hijri-anchored: each occurrence follows its Hijri date. ' : ''}Overlapping occurrences are created and flagged for review.</div>
                   </>
@@ -903,14 +903,14 @@ export function BookingModalInner({
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             {isAdmin && editing && editMode && (
               <>
-                <button className="btn pri" disabled={busy || locked} type="submit">Save changes</button>
+                <button type="button" className="btn alt" disabled={busy||locked} onClick={()=>{setForm(current=>({...current,title:'',notes:'',speakerName:'',programDetails:''}));setErr('');}}>Clear</button><button className="btn pri" disabled={busy || locked} type="submit">Save changes</button>
                 <button className="btn" disabled={busy} type="button" onClick={cancelEdit}>Cancel</button>
               </>
             )}
             {!editing && (
               <>
-                <button className="btn pri" disabled={busy || locked || (repeating && !!preview) || (needsVerification && !bookingVerification?.verified)} type="submit">{repeating ? 'Preview series' : 'Submit request'}</button>
-                <button className="btn" disabled={busy} type="button" onClick={clearForm}>Clear form</button>
+                <button className="btn pri" disabled={busy || locked || (repeating && !!preview) || (needsVerification && !bookingVerification?.verified)} type="submit">{repeating ? 'Preview series' : isAdmin?'Save confirmed booking':'Submit request'}</button>
+                <button className="btn" disabled={busy} type="button" onClick={clearForm}>Clear form</button><button className="btn" disabled={busy} type="button" onClick={onClose}>Cancel</button>
               </>
             )}
           </div>

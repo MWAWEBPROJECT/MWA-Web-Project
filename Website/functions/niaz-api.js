@@ -8,6 +8,7 @@ function audit(db,tx,actor,action,entityId,details={}){
  tx.create(db.collection('auditLog').doc(),{module:'niaz',entityType:'niaz',entityId,action,userId:actor.uid||null,userEmail:actor.email||'',timestamp:now(),...details});
 }
 function queue(db,tx,key,kind,eventId,extra={}){
+ if(kind!=='decision'||extra.decision!=='approved')return; // Other Niaz mail is deliberately disabled.
  tx.set(db.doc('_niazOutbox/'+M.hash(key)),{kind,eventId,...extra,state:'pending',nextAttempt:0,createdAt:now()},{merge:true});
 }
 function revision(current,input){if(!Number.isSafeInteger(input.revision)||input.revision!==(current?.revision||0))throw M.fault(409,'This record changed. Refresh before saving.');}
@@ -44,6 +45,17 @@ async function eoiList(db,after=''){
  const result=await list(db,'niazEOIs',after);
  const metadata=await readDocuments(db,db,result.items.flatMap(row=>(row.events||[]).map(event=>'events/'+M.id(event.eventId))));
  return {...result,items:result.items.map(row=>({...row,events:(row.events||[]).map(event=>({...event,eventTitle:metadata.get('events/'+event.eventId)?.title||'Programme no longer available',eventStartAt:metadata.get('events/'+event.eventId)?.startAt||null}))}))};
+}
+async function contextualList(db,collection,after='',where){
+ const result=await list(db,collection,after,where);
+ const refs=result.items.flatMap(row=>['niazSponsors/'+row.sponsorId,...(row.eventId?['events/'+row.eventId]:[])]);
+ const metadata=await readDocuments(db,db,refs);
+ const items=await Promise.all(result.items.map(async row=>{
+  const sponsor=metadata.get('niazSponsors/'+row.sponsorId),event=row.eventId?metadata.get('events/'+row.eventId):null;
+  let title=event?.title;
+  if(!row.eventId&&row.seriesId){const series=await db.collection('events').where('seriesId','==',row.seriesId).limit(1).get();title=series.docs[0]?.data().title;}
+  return {...row,name:sponsor?.name||'Sponsor unavailable',email:sponsor?.email||'',phone:sponsor?.phone||'',eventTitle:title||'Programme unavailable',eventStartAt:event?.startAt||null};
+ }));return {...result,items};
 }
 async function acknowledgeAttention(db,input,actor){
  const ref=db.doc('_niazOutbox/'+M.id(input.id));
@@ -177,8 +189,8 @@ async function submitEOI(db,input,person){
   }
   if(value.type==='annual'&&new Set(events.map(event=>event.year)).size>1)throw M.fault(400,'Annual sponsorship requests must stay within one calendar year; submit separate requests for different years.');
   const record={sponsorId,ownerKey:person.ownerKey,eventIds,events,...value,applicantName:name,status:'pending',revision:1,createdAt:now(),updatedAt:now(),requestHash};
-  const sponsorPatch={publicConsent:input.publicConsent,consentVersion:'niaz-2026-11-v1',consentAt:now(),ownerKey:person.ownerKey,verification:'verified-contact',updatedAt:now(),revision:(sponsor?.revision||0)+1};
-  if(!sponsor)Object.assign(sponsorPatch,{name,email:person.email,phone:person.phone,active:true,notes:'',emailPreferences:{optionalReminders:true},createdAt:now()});
+  const sponsorPatch={publicConsent:input.publicConsent,consentVersion:'niaz-2026-11-v1',consentAt:now(),ownerKey:person.ownerKey,verification:'verified-contact',emailPreferences:{optionalReminders:input.optionalReminders===true,consentVersion:'niaz-reminders-v2'},updatedAt:now(),revision:(sponsor?.revision||0)+1};
+  if(!sponsor)Object.assign(sponsorPatch,{name,email:person.email,phone:person.phone,active:true,notes:'',createdAt:now()});
   if(sponsor&&name!==sponsor.name)sponsorPatch.nameReviewRequired=true;
   tx.set(sponsorRef,sponsorPatch,{merge:true});
   tx.set(db.doc('_niazContacts/'+M.sponsorKey(person)),{sponsorId});
@@ -199,7 +211,10 @@ async function decideEOI(db,eoiId,input,actor){
   const sponsor=snapData(await tx.get(db.doc('niazSponsors/'+current.sponsorId)));
   if(!sponsor?.active)throw M.fault(409,'Sponsor is archived.');
   const approved=await tx.get(db.collection('niazSponsorships').where('eventId','==',eventId).where('status','==','approved').limit(501));
-  const programmeRef=current.type==='permanent'?db.doc('niazProgrammeSeries/'+M.hash(current.seriesId+':'+current.sponsorId)):null,programme=programmeRef?await tx.get(programmeRef):null;
+  const approvedType=current.type==='discretion'?M.choice(input.type||'one_time',['one_time','permanent'],'an approved sponsorship type'):current.type;
+  if(decision==='approved'&&approvedType==='permanent'&&!event?.seriesId)throw M.fault(400,'Permanent sponsorship needs a calendar series.');
+  const approvedSeries=approvedType==='permanent'&&event?event.seriesId:current.seriesId;
+  const programmeRef=approvedType==='permanent'?db.doc('niazProgrammeSeries/'+M.hash(approvedSeries+':'+current.sponsorId)):null,programme=programmeRef?await tx.get(programmeRef):null;
   const assignmentRef=db.doc('niazSponsorships/'+M.assignmentKey(current.sponsorId,eventId,'eoi')),existing=await tx.get(assignmentRef);
   if(approved.size>500)throw M.fault(413,'Too many approved sponsors.');
   const replaces=input.reassignIds||[];
@@ -210,15 +225,15 @@ async function decideEOI(db,eoiId,input,actor){
    if(approved.docs.some(doc=>doc.data().sponsorId===current.sponsorId&&!replaces.includes(doc.id)))throw M.fault(409,'This applicant already has an approved assignment for the event. Review it instead.');
    const role=approved.size>replaces.length?'joint':M.choice(input.role||'joint',['sole','joint'],'a sponsorship role');
    if(existing.exists)throw M.fault(409,'This applicant already has an EOI assignment for the event. Review the existing assignment instead of overwriting it.');
-   tx.create(assignmentRef,{sponsorId:current.sponsorId,eventId,seriesId:current.seriesId,type:current.type,origin:'eoi',role,status:'approved',arrangementConfirmed:false,notes:current.notes,inKind:current.inKind,revision:1,year:Number(dateKey(event.startAt).slice(0,4)),approvedBy:actor.uid,approvedAt:now(),createdAt:now(),updatedAt:now()});
-   if(programmeRef&&!programme.exists)tx.create(programmeRef,{seriesId:current.seriesId,sponsorId:current.sponsorId,status:'active',reason:'Permanent EOI approved; annual occurrence review required.',revision:1,createdAt:now(),updatedAt:now()});
+   tx.create(assignmentRef,{sponsorId:current.sponsorId,eventId,seriesId:approvedSeries,type:approvedType,origin:'eoi',role,status:'approved',arrangementConfirmed:false,notes:current.notes,inKind:current.inKind,revision:1,year:Number(dateKey(event.startAt).slice(0,4)),approvedBy:actor.uid,approvedAt:now(),createdAt:now(),updatedAt:now()});
+   if(programmeRef&&!programme.exists)tx.create(programmeRef,{seriesId:approvedSeries,sponsorId:current.sponsorId,status:'active',reason:'Permanent EOI approved; annual occurrence review required.',revision:1,createdAt:now(),updatedAt:now()});
    for(const doc of approved.docs)if(!replaces.includes(doc.id)&&doc.data().role==='sole')tx.update(doc.ref,{role:'joint',revision:(doc.data().revision||0)+1,updatedAt:now()});
    for(const doc of approved.docs)if(replaces.includes(doc.id)){tx.update(doc.ref,{status:'reassigned',reason,updatedAt:now(),revision:(doc.data().revision||0)+1});queue(db,tx,'reassign:'+eoiId+':'+doc.id,'reassignment',eventId,{sponsorId:doc.data().sponsorId});}
   }
   const events=current.events.map(v=>v.eventId===eventId?{...v,status:decision,reason,decidedBy:actor.uid,decidedAt:now()}:v);
   tx.update(ref,{events,status:events.some(e=>e.status==='pending')?'pending':'reviewed',revision:current.revision+1,updatedAt:now()});
   audit(db,tx,actor,'niaz.eoi_'+decision,eoiId,{eventId,reassignIds:replaces,reason});
-  queue(db,tx,'decision:'+eoiId+':'+eventId,'decision',eventId,{sponsorId:current.sponsorId,decision});
+  queue(db,tx,'decision:'+eoiId+':'+eventId,'decision',eventId,{sponsorId:current.sponsorId,decision,eoiId,assignmentId:assignmentRef.id});
   return {events,revision:current.revision+1};
  });
 }
@@ -336,11 +351,32 @@ async function importStep(db,jobId,offset,actor){
    }
    read.push({row,event,sponsor:documents.get('niazSponsors/'+row.sponsorId),assignment:documents.get('niazSponsorships/'+row.assignmentId)});
   }
+  const eventGroups=new Map(),programmes=new Map();
+  for(const {row,event,sponsor,assignment} of read){
+   if(assignment)continue;
+   if(sponsor&&sponsor.active!==true)throw M.fault(409,'An imported sponsor is inactive. Review the directory first.');
+   if(!eventGroups.has(event.id)){
+    const existing=await tx.get(db.collection('niazSponsorships').where('eventId','==',event.id).where('status','==','approved').limit(501));
+    if(existing.size>500)throw M.fault(413,'Too many sponsors for this event.');
+    eventGroups.set(event.id,{existing:existing.docs,added:[]});
+   }
+   const group=eventGroups.get(event.id),peers=[...group.existing.map(doc=>doc.data()),...group.added];
+   if(peers.some(peer=>peer.sponsorId===row.sponsorId))throw M.fault(409,'An imported sponsor is already assigned to this event. Edit the existing assignment.');
+   if(row.value.role==='sole'&&peers.length)throw M.fault(409,'A sole sponsorship conflicts with existing or imported sponsors. Choose joint sponsorship before importing.');
+   if(group.added.some(peer=>peer.role==='sole'))throw M.fault(409,'Import contains incompatible sole and joint sponsors. Review it before importing.');
+   group.added.push({sponsorId:row.sponsorId,role:row.value.role});
+   if(row.value.type==='permanent'){
+    const key=M.hash(row.value.seriesId+':'+row.sponsorId);
+    if(!programmes.has(key)){const ref=db.doc('niazProgrammeSeries/'+key);programmes.set(key,{ref,snapshot:await tx.get(ref),row});}
+   }
+  }
+  for(const {existing,added} of eventGroups.values())if(added.length)for(const doc of existing)if(doc.data().role==='sole')tx.update(doc.ref,{role:'joint',revision:doc.data().revision+1,updatedAt:now()});
+  for(const {ref,snapshot,row} of programmes.values())if(!snapshot.exists)tx.create(ref,{seriesId:row.value.seriesId,sponsorId:row.sponsorId,status:'active',revision:1,createdAt:now(),updatedAt:now(),reason:'Coordinator imported assignment; future annual occurrences require review.'});
   for(const {row,event,sponsor,assignment} of read){
    if(assignment)continue;
    if(!sponsor)tx.set(db.doc('niazSponsors/'+row.sponsorId),{...M.sponsor(row.value),verification:'import-unverified',ownerKey:null,revision:1,consentAt:now(),createdAt:now(),updatedAt:now()});
    for(const key of M.contactKeys(row.value))tx.set(db.doc('_niazContacts/'+key),{sponsorId:row.sponsorId});
-   tx.set(db.doc('niazSponsorships/'+row.assignmentId),{...M.assignment(row.value),sponsorId:row.sponsorId,eventId:event.id,origin:'import',status:'proposed',arrangementConfirmed:false,revision:1,year:Number(dateKey(event.startAt).slice(0,4)),createdAt:now(),updatedAt:now()});
+   tx.set(db.doc('niazSponsorships/'+row.assignmentId),{...M.assignment(row.value),sponsorId:row.sponsorId,eventId:event.id,origin:'import',status:'approved',approvedBy:actor.uid,approvedAt:now(),arrangementConfirmed:false,revision:1,year:Number(dateKey(event.startAt).slice(0,4)),createdAt:now(),updatedAt:now()});
   }
   const next=offset+rows.length,state=next>=job.rows.length?'complete':'running';
   tx.update(ref,{offset:next,state});audit(db,tx,actor,'niaz.import_batch',jobId,{offset,processed:rows.length});
@@ -397,7 +433,7 @@ async function handle(req,res,{db,getAuth,origins}){
   if(path==='/preferences'&&req.method==='POST'){
    if(typeof input.optionalReminders!=='boolean')throw M.fault(400,'Choose optional reminder preferences.');
    const contact=(await db.doc('_niazContacts/'+M.sponsorKey(person)).get()).data(),sponsorId=M.id(contact?.sponsorId||M.sponsorKey(person));
-   await db.runTransaction(async tx=>{const ref=db.doc('niazSponsors/'+sponsorId),s=snapData(await tx.get(ref));if(!s||s.ownerKey!==person.ownerKey)throw M.fault(404,'Sponsor record unavailable.');revision(s,input);tx.update(ref,{emailPreferences:{optionalReminders:input.optionalReminders},updatedAt:now(),revision:s.revision+1});audit(db,tx,person,'niaz.preferences_changed',sponsorId);});
+   await db.runTransaction(async tx=>{const ref=db.doc('niazSponsors/'+sponsorId),s=snapData(await tx.get(ref));if(!s||s.ownerKey!==person.ownerKey)throw M.fault(404,'Sponsor record unavailable.');revision(s,input);tx.update(ref,{emailPreferences:{optionalReminders:input.optionalReminders,consentVersion:'niaz-reminders-v2'},updatedAt:now(),revision:s.revision+1});audit(db,tx,person,'niaz.preferences_changed',sponsorId);});
    return res.json({ok:true});
   }
   if(path==='/withdraw'&&req.method==='POST'){
@@ -411,7 +447,8 @@ async function handle(req,res,{db,getAuth,origins}){
    if(path==='/session')return res.json({manage:!!manager,finance,membershipAvailable:false,liveFinanceAvailable:false});
    if(path==='/eois')return res.json(await eoiList(db,req.query.after||''));
    const collection={'/sponsors':'niazSponsors','/assignments':'niazSponsorships','/eois':'niazEOIs','/programmes':'niazProgrammeSeries'}[path];
-   if(collection)return res.json(await list(db,collection,req.query.after||''));
+   if(collection)return res.json(await (['niazSponsorships','niazProgrammeSeries'].includes(collection)?contextualList(db,collection,req.query.after||''):list(db,collection,req.query.after||'')));
+   if(path==='/proposals')return res.json(await contextualList(db,'niazSponsorships',req.query.after||'',['status','==','proposed']));
    if(path==='/sandbox-ledger'){
     if(!finance)throw M.fault(403,'Niaz finance access is required for TEST contribution reports.');
     return res.json(await list(db,'_niazSandboxLedger',req.query.after||''));
@@ -430,6 +467,7 @@ async function handle(req,res,{db,getAuth,origins}){
   if(!manager)throw M.fault(403,'Niaz coordinator management access required.');
   if(path==='/attention-acknowledge')return res.json(await acknowledgeAttention(db,input,manager));
   if(path==='/sponsor')return res.json({sponsor:await saveSponsor(db,input,manager)});
+  if(path==='/event-plan')return res.json(await require('./niaz-event-plan').saveEventPlan(db,input,manager));
   if(path==='/assign')return res.json({assignment:await assign(db,input,manager)});
   if(path==='/coverage')return res.json(await saveCoverage(db,M.id(input.eventId),input,manager,finance));
   if(path==='/decision')return res.json(await decideEOI(db,input.id,input,manager));
@@ -444,4 +482,4 @@ async function handle(req,res,{db,getAuth,origins}){
   throw M.fault(404,'Niaz action not found.');
  }catch(error){console.error('Niaz request failed',{status:error.status||503,message:error.status?error.message:'Internal request failure'});return res.status(error.status||503).json({error:error.status?error.message:'Niaz is temporarily unavailable. No success is assumed; refresh before retrying.'});}
 }
-module.exports={handle,list,saveSponsor,assign,eventDetail,saveCoverage,submitEOI,decideEOI,proposeAlternative,own,previewImport,importStep,identity,audit,queue,legacyPreview,editOwnEOI,dashboard,eoiList,acknowledgeAttention};
+module.exports={handle,list,contextualList,saveSponsor,assign,eventDetail,saveCoverage,submitEOI,decideEOI,proposeAlternative,own,previewImport,importStep,identity,audit,queue,legacyPreview,editOwnEOI,dashboard,eoiList,acknowledgeAttention};

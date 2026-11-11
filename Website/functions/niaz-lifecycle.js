@@ -142,14 +142,10 @@ async function prepareNotices(db,time=new Date()){
   const types=M.dueNotices(event.data(),time,config.threeDayFollowup);
   const coverage=(await db.doc('niazEventCoverage/'+event.id).get()).data()||{};
   for(const kind of types){
-   if(kind==='three-day'&&coverage.arrangementConfirmed)continue;
+   // Opted-in sponsors receive their follow-up even when arrangements are confirmed.
    const key='reminder:'+kind+':'+event.id+':'+event.data().startAt,ref=db.doc('_niazOutbox/'+M.hash(key));
    const added=await db.runTransaction(async tx=>{const s=await tx.get(ref);if(s.exists)return false;tx.create(ref,{kind,eventId:event.id,eventStartAt:event.data().startAt,state:'pending',nextAttempt:0,createdAt:iso()});return true;});if(added)queued++;
   }
- }
- const date=dateKey(time);if(date.endsWith('-01')){
-  const ref=db.doc('_niazOutbox/'+M.hash('monthly:'+date));
-  const added=await db.runTransaction(async tx=>{if((await tx.get(ref)).exists)return false;tx.create(ref,{kind:'monthly',month:date.slice(0,7),state:'pending',nextAttempt:0,createdAt:iso()});return true;});if(added)queued++;
  }
  return {queued};
 }

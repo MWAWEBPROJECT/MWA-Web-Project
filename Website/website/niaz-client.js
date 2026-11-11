@@ -13,10 +13,10 @@ export async function niazApi(path,body,verification){
  if(!response.ok)throw Error(data.error||'Niaz could not complete this request.');return data;
 }
 export const importColumns=['name','email','phone','eventDate','eventId','type','seriesId','role','publicConsent','inKind','notes','memberId'];
-export const importHeaders=['Name','Email','Mobile','Date','Event Id','Sponsorship Type','Series Id','Role','Public Consent','In-kind Provision','Notes','Member Id'];
+export const importHeaders=['Name','Email','Mobile','Date','Event Id','Sponsorship Type','Series Id','Role','Public Consent','Additional Offers / Requests','Notes','Member Id'];
 export function importMapping(headers){
  const normal=value=>String(value).trim().toLowerCase().replace(/[^a-z0-9]/g,'');
- return Object.fromEntries(importColumns.map((key,index)=>[key,headers.findIndex(header=>[normal(key),normal(importHeaders[index])].includes(normal(header)))]));
+ return Object.fromEntries(importColumns.map((key,index)=>[key,headers.findIndex(header=>[normal(key),normal(importHeaders[index]),...(key==='inKind'?['inkindprovision']:[])].includes(normal(header)))]));
 }
 export function mapImportRows(data,mapping){
  return data.rows.map(row=>{
@@ -37,9 +37,9 @@ export async function importTemplate(){
   ['Keep Date, Mobile and reference columns as Text. Do not use ambiguous short years, Hijri dates or formulas.'],
   ['Event Id must match an existing confirmed public MWA programme on that date; it is required when more than one programme matches. Use Programme date > Find programmes, never guess by title.'],
   ['Sponsorship Type: one_time, annual or permanent. A permanent row requires the event\'s stable Series Id. Role: sole, joint or contributor. Dropdowns are conveniences; the server revalidates every row.'],
-  ['Public Consent defaults to false (private). Enter true only after obtaining explicit revocable public-name consent. Imported assignments remain proposed until coordinator review.'],
+  ['Public Consent defaults to false (private). Enter true only after obtaining explicit revocable public-name consent. Reviewed imports create approved coordinator assignments immediately.'],
   ['Member Id is reserved and must stay blank: authoritative membership linking is not configured. No payment or membership is created by importing.'],
-  ['In-kind Provision and Notes are optional private coordination details. No cash amounts or payment success may be entered here.'],
+  ['Additional Offers / Requests and Notes are optional private coordination details. No cash amounts or payment success may be entered here.'],
   ['Save as .xlsx (preserves Lists/dropdowns/Instructions), or save the Niaz Sponsors sheet only as UTF-8 .csv. CSV supports quoted commas/newlines; it does not preserve workbook instructions or dropdowns.'],
   ['Import accepts at most 500 rows and a 2 MB file; server preview has a smaller 800 KB data limit. Review errors/duplicates before importing resumable batches of 40. Existing legacy Calendar fields are not overwritten.']
  ]});

@@ -21,10 +21,10 @@ function sponsorKey(value){return hash('contact:'+ (value.email?'email:'+value.e
 function contactKeys(value){return [...new Set([value.email?sponsorKey({email:value.email}):null,value.phone?sponsorKey({phone:value.phone}):null].filter(Boolean))];}
 function assignmentKey(sponsorId,eventId,origin='coordinator'){return hash([sponsorId,eventId,origin].join(':'));}
 function assignment(input){
- const type=choice(input.type,['one_time','annual','permanent'],'a sponsorship type');
+ const type=choice(input.type,['one_time','annual','permanent','discretion','cash_donation'],'a sponsorship type');
  const seriesId=input.seriesId?id(input.seriesId):'';
  if(type==='permanent'&&!seriesId)throw fault(400,'Permanent sponsorship requires a stable calendar series reference.');
- return {type,seriesId,role:choice(input.role||'joint',['sole','joint','contributor'],'a sponsor role'),inKind:text(input.inKind||'','in-kind provision',1000),notes:text(input.notes||'','arrangement notes',2000)};
+ return {type,seriesId,role:choice(input.role||'joint',['sole','joint','contributor'],'a sponsor role'),inKind:text(input.inKind||'','additional offers / requests',1000),notes:text(input.notes||'','arrangement notes',2000)};
 }
 function eligible(event,eventId){return !!publicEvent(event,eventId)&&String(event.departmentName||'').trim().toLowerCase()==='mwa programs';}
 function annualYear(value){if(!Number.isInteger(value)||value<2020||value>2100)throw fault(400,'Choose a valid calendar year.');return value;}

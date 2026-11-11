@@ -69,7 +69,7 @@ export default function LoginCard({ user, login, loginWithGoogle, logout, authEr
           )}
           {message && <div className="err login-err" role="alert">⚠ {message}</div>}
           {pendingLink ? (
-            <form onSubmit={link} noValidate className="login-link">
+            <form onSubmit={link} noValidate className="login-link"><button type="button" className="btn alt" disabled={busy} onClick={()=>{setLinkPassword('');setErr('');}}>Clear</button>
               <p className="login-link-note">
                 <strong>{pendingLink.email}</strong> already has a password account here. Enter that password once to connect
                 your Google sign-in to it. After this you will only need Google.
@@ -98,7 +98,7 @@ export default function LoginCard({ user, login, loginWithGoogle, logout, authEr
               {!passwordLoginDisabled && (
                 <details className="login-alt">
                   <summary>Use email and password instead</summary>
-                  <form onSubmit={submit} noValidate>
+                  <form onSubmit={submit} noValidate><button type="button" className="btn alt" disabled={busy} onClick={()=>{setEmail('');setPassword('');setErr('');}}>Clear</button><button type="button" className="btn alt" disabled={busy} onClick={()=>{setEmail('');setPassword('');location.assign('/');}}>Cancel</button>
                     <div className="field">
                       <label htmlFor="admin-email">Email</label>
                       <input id="admin-email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} disabled={busy} required />

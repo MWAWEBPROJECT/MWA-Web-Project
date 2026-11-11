@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {niazOfferUrl} from '../utils/niazProgramme.mjs';
-export default function NiazPublicSponsors({eventId,startAt}){
+export default function NiazPublicSponsors({eventId,startAt,compact=false}){
  const [data,setData]=useState(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
  useEffect(()=>{
   let controller=null,disposed=false;setData(null);setError('');
@@ -18,6 +18,7 @@ export default function NiazPublicSponsors({eventId,startAt}){
   window.addEventListener('focus',refresh);
   return()=>{disposed=true;controller?.abort();clearInterval(interval);window.removeEventListener('focus',refresh);};
  },[eventId,retry]);
+ if(compact)return data?.sponsors?.length?<span className="niaz-card-sponsors">Niaz: {data.sponsors.map(s=>s.name+(s.role==='contributor'?' (Niaz Donor)':'')).join(', ')}</span>:null;
  return <section className="card" aria-label="Niaz Sponsor(s)">
   <h3>Niaz Sponsor(s)</h3>{error?<p role="status">{error}</p>:!data?<p role="status">Loading sponsorships...</p>:data.sponsors.length?<ul>{data.sponsors.map((sponsor,index)=><li key={index}>{sponsor.name} · {sponsor.type==='one_time'?'One-time':sponsor.type==='annual'?'Annual':'Permanent'} · {sponsor.role}</li>)}</ul>:<p>No approved sponsorships listed.</p>}
   {error&&<button type="button" className="btn alt" onClick={()=>setRetry(value=>value+1)}>Retry sponsorship details</button>}

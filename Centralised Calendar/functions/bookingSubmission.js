@@ -7,6 +7,7 @@ function createBookingSubmissionService(deps) {
 
   return async function createBookingSubmission(data, caller) {
     const { isAdmin: submitterIsAdmin, uid, email } = caller;
+    const initialStatus=submitterIsAdmin?'confirmed':'pending';
     const needsVerification = !submitterIsAdmin && !caller.authenticated;
     const { prepared: originalPayload, venue, department, overrides } =
       await prepareBookingPayload(data, submitterIsAdmin);
@@ -65,12 +66,13 @@ function createBookingSubmissionService(deps) {
       const overlaps = await findOverlaps(
         payload.venueId, payload.startAt, payload.endAt, null, tx, resolveBufferHours(venue)
       );
+      if(submitterIsAdmin&&overlaps.length)throw new HttpsError('failed-precondition','This venue has an overlapping booking. Resolve the clash before confirming an admin booking.');
       const conflictWith = overlaps.map(overlap => overlap.id);
       const savedBooking = {
         ...payload,
         departmentName: department.name,
         venueName: venue.name,
-        status: 'pending',
+        status: initialStatus,
         visibility,
         requestedVisibility: visibility,
         hasConflict: overlaps.length > 0,
@@ -103,9 +105,9 @@ function createBookingSubmissionService(deps) {
         action: 'submitted',
         userId: uid || null,
         userEmail: uid ? email : originalPayload.contactEmail,
-        note: overlaps.length ? 'Submitted as pending with a detected venue overlap.' : 'Submitted as pending.'
+        note: submitterIsAdmin?'Created and confirmed by an authorised admin.':overlaps.length ? 'Submitted as pending with a detected venue overlap.' : 'Submitted as pending.'
       }));
-      result = { id: eventRef.id, hasConflict: overlaps.length > 0, status: 'pending', replayed: false };
+      result = { id: eventRef.id, hasConflict: overlaps.length > 0, status: initialStatus, replayed: false };
     });
 
     if (result.replayed) return result;
@@ -113,14 +115,14 @@ function createBookingSubmissionService(deps) {
     await refreshConflictNeighborhood([{ id: result.id, after: saved }]).catch(error => {
       logger.error('Booking conflict refresh failed after submission', { eventId: result.id, error });
     });
-    if(deps.deliverSubmission){await deps.deliverSubmission(result.id).catch(error=>logger.error('Booking delivery queued',{eventId:result.id}));return {id:result.id,hasConflict:result.hasConflict,status:'pending'};}
+    if(deps.deliverSubmission){await deps.deliverSubmission(result.id).catch(error=>logger.error('Booking delivery queued',{eventId:result.id}));return {id:result.id,hasConflict:result.hasConflict,status:result.status};}
     const hijri = hijriInfoFor(dateKeyOf(saved.startAt), overrides);
     const emailActions = submitterIsAdmin ? null : await issueLink(db, result.id, saved);
     await sendAll([
-      notify.submissionRequester(saved, hijri),
+      submitterIsAdmin?notify.decisionRequester(saved,hijri,'confirmed','Created by an authorised admin.'):notify.submissionRequester(saved, hijri),
       submitterIsAdmin ? null : notify.submissionAdmin({ ...saved, id: result.id, emailActions }, hijri, [])
     ]);
-    return { id: result.id, hasConflict: result.hasConflict, status: 'pending' };
+    return { id: result.id, hasConflict: result.hasConflict, status: result.status };
   };
 }
 

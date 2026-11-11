@@ -858,7 +858,8 @@ exports.createRecurringBooking = onCall({ cors: true, secrets: emailSecrets }, a
   const data = request.data || {};
   const { venue, department, occurrences, refs, overlapMap } = await expandSeries(data);
 
-  const status = data.status === 'pending' ? 'pending' : 'confirmed';
+  const status = 'confirmed';
+  if([...overlapMap.values()].some(ids=>ids.length))throw new HttpsError('failed-precondition','Resolve overlapping bookings before creating an admin series.');
   const visibility = sanitizeVisibility(data.visibility) || 'public';
   const rule = data.recurrence;
   const seriesId = db.collection('events').doc().id;
@@ -1541,7 +1542,7 @@ async function deliverSubmission(id){return bookingOutbox.deliver(db,id,async(jo
  const event=(await db.doc('events/'+id).get()).data();if(!event)return [];
  const hijri=hijriInfoFor(dateKeyOf(event.startAt),await getHijriOverrides());
  const actions=job.submitterIsAdmin||event.status!=='pending'?null:await require('./emailBookingLink').issueLink(db,id,event);
- return [notify.submissionRequester(event,hijri),job.submitterIsAdmin?null:notify.submissionAdmin({...event,id,emailActions:actions},hijri,job.overlapDetails||[])].filter(Boolean);
+ return [job.submitterIsAdmin&&event.status==='confirmed'?notify.decisionRequester(event,hijri,'confirmed','Created by an authorised admin.'):notify.submissionRequester(event,hijri),job.submitterIsAdmin?null:notify.submissionAdmin({...event,id,emailActions:actions},hijri,job.overlapDetails||[])].filter(Boolean);
 },require('./mailer').sendMail);}
 exports.bookingSubmissionDelivery=onDocumentWritten({document:'_bookingSubmissionJobs/{id}',secrets:emailSecrets},event=>deliverSubmission(event.params.id));
 exports.bookingSubmissionRetry=onSchedule({schedule:'every 5 minutes',secrets:emailSecrets},async()=>{

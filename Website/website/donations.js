@@ -59,3 +59,5 @@ if(id||query.has('donation_cancelled')){
  if(id){show('Checking your Stripe checkout','We are verifying your payment or recurring authorisation with Stripe. Please do not submit it again.');if(returnedId&&!watch?.dismissed)dialog.showModal();poll();}
  else{show('Checkout cancelled','You returned without completing this checkout. No successful payment has been confirmed.');retry.hidden=true;dialog.showModal();}
 }
+
+form.addEventListener('reset',()=>{setTimeout(()=>{for(const input of form.querySelectorAll('input,select,textarea'))input.setCustomValidity?.('');for(const input of form.querySelectorAll('select,input[type=radio]'))input.dispatchEvent(new Event('change',{bubbles:true}));notice.textContent='';},0);});

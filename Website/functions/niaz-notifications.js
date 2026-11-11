@@ -9,7 +9,7 @@ async function recipientAllowed(db,email){
  return !!(await resolveAdmin(db,entry.uid,token,'niaz')||await resolveAdmin(db,entry.uid,token,'niaz-read'));
 }
 async function settings(db,input,actor){
- if(actor.email!==OWNER_EMAIL)throw M.fault(403,'Only the owner can configure notification delivery and recipients.');
+ if(actor.email!==OWNER_EMAIL)throw M.fault(403,'Only the Super Admin can configure notification delivery and recipients.');
  if(typeof input.notificationEnabled!=='boolean'||typeof input.threeDayFollowup!=='boolean'||!Array.isArray(input.coordinatorEmails)||input.coordinatorEmails.length>10)throw M.fault(400,'Choose valid notification settings.');
  const coordinatorEmails=[...new Set(input.coordinatorEmails.map(M.email))];
  for(const address of coordinatorEmails)if(!address||!await recipientAllowed(db,address))throw M.fault(400,'Each coordinator recipient must have active Niaz coordinator or oversight access.');
@@ -32,37 +32,44 @@ async function monthlyBody(db,month){
  }
  return lines.join('\n\n');
 }
+// Only the three explicitly approved Niaz email workflows may reach Gmail.
 async function prepareDelivery(db,job,config){
- const coordinators=[];for(const email of config.coordinatorEmails||[])if(await recipientAllowed(db,email))coordinators.push(email);
- if(!coordinators.length)throw M.fault(409,'No active Niaz coordinator recipients; delivery needs attention.');
- if(job.kind==='monthly')return coordinators.map(to=>({to,subject:'MWA Niaz monthly report '+job.month,body:null}));
+ const approval=job.kind==='decision'&&job.decision==='approved';
+ if(!approval&&!['seven-day','three-day'].includes(job.kind))return [];
  const event=(await db.doc('events/'+M.id(job.eventId)).get()).data();
- if(job.kind==='seven-day'||job.kind==='three-day'){
-  if(!event||event.status!=='confirmed'||event.startAt!==job.eventStartAt)return [];
-  const today=dateKey(new Date()),difference=Math.round((Date.parse(dateKey(event.startAt)+'T00:00:00Z')-Date.parse(today+'T00:00:00Z'))/86400000);
-  if(difference<0)return [];
-  const coverage=(await db.doc('niazEventCoverage/'+job.eventId).get()).data();
-  if(job.kind==='three-day'&&!coverage?.eventReviewRequired&&coverage?.arrangementConfirmed)return [];
+ if(!event||!M.eligible(event,job.eventId))return [];
+ if(!approval){
+  if(event.startAt!==job.eventStartAt)return [];
+  const days=Math.round((Date.parse(dateKey(event.startAt)+'T00:00:00Z')-Date.parse(dateKey(new Date())+'T00:00:00Z'))/86400000);
+  if(days<0||days>(job.kind==='seven-day'?7:3))return [];
  }
- const body='MWA Niaz notice: '+job.kind+(job.decision?' - '+job.decision:'')+(job.status?' - '+job.status:'')+'\n\n'+(event?eventText(event):'This programme is no longer available. Contact the coordinator.')+'\n\nEOI approval, financial contribution and final arrangement confirmation remain separate. Review the current record in Niaz Administration.';
- const recipients=coordinators.map(to=>({to,subject:'MWA Niaz: '+job.kind,body}));
- if(['seven-day','three-day','decision','alternative','approval','review','reschedule','cancellation','reassignment'].includes(job.kind)){
-  const assignments=job.sponsorId?[{sponsorId:job.sponsorId}]:(await db.collection('niazSponsorships').where('eventId','==',job.eventId).where('status','==','approved').limit(501).get()).docs.map(doc=>doc.data());
-  if(assignments.length>500)throw M.fault(413,'Too many sponsor recipients; manual review needed.');
-  for(const value of assignments){
-   const sponsor=(await db.doc('niazSponsors/'+M.id(value.sponsorId)).get()).data();if(!sponsor?.active)continue;
-   if(job.kind==='three-day'&&sponsor.emailPreferences?.optionalReminders===false)continue;
-   const labels={'seven-day':'Please confirm your Niaz arrangements','three-day':'Niaz arrangement follow-up',decision:job.decision==='rejected'?'Your Niaz offer was declined':'Your Niaz offer was approved',alternative:'An alternative Niaz programme is proposed',approval:'Your Niaz sponsorship is approved',review:'Your Niaz sponsorship was reviewed',reschedule:'Your Niaz programme details changed',cancellation:'Your Niaz programme was cancelled',reassignment:'Your Niaz sponsorship arrangement changed'};
-   const sponsorBody='Hello '+sponsor.name+',\n\n'+labels[job.kind]+'.\n\n'+(event?eventText(event):'This programme is no longer available.')+
-    '\n\n'+(['seven-day','three-day'].includes(job.kind)?'Please contact MWA to confirm your food, serving and logistics arrangements.':job.kind==='cancellation'?'Please do not proceed with the previous programme arrangements. Contact MWA if you need assistance.':job.kind==='alternative'?'This is a proposal only. Contact MWA or submit a new EOI for the suggested programme; your existing sponsorship has not been moved automatically.':'Please contact MWA about the next steps and confirm any updated arrangements.')+
-    '\n\nEOI approval, financial support and final arrangement confirmation are separate. Reply to this email to contact MWA. View your private requests at https://refreshed.muhammadiwelfare.org.au/niaz/ using your verified contact.';
-   if(sponsor.email)recipients.push({to:sponsor.email,subject:'MWA Niaz - '+labels[job.kind]+(event?' - '+event.title:''),body:sponsorBody});
-   else for(const to of coordinators)recipients.push({to,subject:'MWA Niaz contact gap',body:(event?eventText(event):job.eventId)+'\nSponsor '+sponsor.name+' has no email. Contact privately using the directory. No sponsor email was sent.'});
-  }
+ if(job.kind==='seven-day'){
+  const recipients=[];
+  for(const email of config.coordinatorEmails||[])if(await recipientAllowed(db,email))recipients.push({to:email,subject:'MWA Niaz - Programme in seven days',body:eventText(event)+'\n\nFor your information: please review sponsorship and arrangements in Niaz Administration.'});
+  if(!recipients.length)throw M.fault(409,'No active Niaz coordinator recipients; delivery needs attention.');
+  return recipients;
  }
- const combined=new Map();
- for(const value of recipients){const key=value.to+':'+value.subject,previous=combined.get(key);combined.set(key,previous?{...value,body:previous.body+'\n\n'+value.body}:value);}
- return [...combined.values()];
+ let assignments;
+ if(approval){
+  if(!job.eoiId||!job.assignmentId)return []; // Do not replay old unbound approval jobs.
+  const eoi=(await db.doc('niazEOIs/'+M.id(job.eoiId)).get()).data();
+  const assignment=(await db.doc('niazSponsorships/'+M.id(job.assignmentId)).get()).data();
+  if(!eoi||!assignment||assignment.status!=='approved'||assignment.eventId!==job.eventId||assignment.sponsorId!==job.sponsorId||!eoi.events.some(e=>e.eventId===job.eventId&&e.status==='approved'))return [];
+  assignments=[assignment];
+ }else{
+  if(config.threeDayFollowup!==true)return [];
+  const result=await db.collection('niazSponsorships').where('eventId','==',job.eventId).where('status','==','approved').limit(501).get();
+  if(result.size>500)throw M.fault(413,'Too many sponsor recipients; manual review needed.');
+  assignments=result.docs.map(doc=>doc.data());
+ }
+ const recipients=new Map();
+ for(const assignment of assignments){
+  const sponsor=(await db.doc('niazSponsors/'+M.id(assignment.sponsorId)).get()).data();
+  if(!sponsor?.active||!sponsor.email||(!approval&&(sponsor.emailPreferences?.optionalReminders!==true||sponsor.emailPreferences?.consentVersion!=='niaz-reminders-v2')))continue;
+  const title=approval?'Your Niaz sponsorship is approved':'Your Niaz programme is in three days';
+  recipients.set(sponsor.email,{to:sponsor.email,subject:'MWA Niaz - '+title,body:'Hello '+sponsor.name+',\n\n'+title+'.\n\n'+eventText(event)+'\n\n'+(approval?'The Niaz Coordinator has approved your offer. Please contact MWA about any remaining arrangements.':'This is your requested follow-up. Please contact MWA if your arrangements need attention.')+'\n\nView your requests and reminder preference at https://refreshed.muhammadiwelfare.org.au/niaz/ using your verified contact.'});
+ }
+ return [...recipients.values()];
 }
 async function deliverJob(db,ref,send,time=Date.now()){
  const lease=randomUUID();let job;

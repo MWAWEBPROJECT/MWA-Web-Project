@@ -14,6 +14,6 @@ export default function AdminAccessEditor({email='',initialModules=[],expiryDate
    {expiryMode==='date'&&<div className="field"><label htmlFor="team-expiry-date">Last day of access</label><input id="team-expiry-date" type="date" required value={date} onChange={e=>setDate(e.target.value)}/><p className="team-access-help">Access ends at midnight after this date, in Sydney time. The member stays on the list and can be renewed here.</p></div>}
   </fieldset>
   {!selected.length&&<p className="team-owner-note">No modules selected. This person can sign in but cannot administer any module.</p>}
-  <div className="team-editor-actions"><button className="lb lb-default" disabled={busy} type="submit">{busy?'Saving…':isNew?'Add member':'Save access'}</button><button className="lb lb-outline" type="button" disabled={busy} onClick={onCancel}>Cancel</button></div>
+  <div className="team-editor-actions"><button type="button" className="btn alt" disabled={busy} onClick={()=>{if(isNew)setAddress('');setSelected([]);setExpiryMode('indefinite');setDate('');}}>Clear</button><button className="lb lb-default" disabled={busy} type="submit">{busy?'Saving…':isNew?'Add member':'Save access'}</button><button className="lb lb-outline" type="button" disabled={busy} onClick={onCancel}>Cancel</button></div>
  </form>;
 }

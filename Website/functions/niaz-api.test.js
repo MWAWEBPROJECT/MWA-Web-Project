@@ -178,19 +178,20 @@ test('EOI edits require own identity and stay locked after any reviewed event',a
  db.store.set('niazEOIs/request',{...db.store.get('niazEOIs/request'),events:[{eventId:'event1',status:'approved'}]});
  await assert.rejects(A.editOwnEOI(db,{id:'request',revision:2,notes:'Again'},person),/cannot be edited/);
 });
-test('Monthly and reminder queue deduplicates; synthetic send is logged once and cancelled events are suppressed',async()=>{
+test('Seven-day coordinator queue deduplicates; synthetic send is logged once and cancelled events are suppressed',async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2027-01-08T08:00:00.000Z')});
  const N=require('./niaz-notifications'),email='coordinator@example.org',uid='coordinator';
  const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid,modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,coordinatorEmails:[email]},'niazSponsors/sponsor1':{name:'Synthetic',email:'sponsor@example.org',active:true},'niazSponsorships/a':{eventId:'event1',sponsorId:'sponsor1',status:'approved'}});
  const first=await L.prepareNotices(db,new Date('2027-01-04T08:00:00.000Z'));assert.equal(first.queued,1);
  assert.equal((await L.prepareNotices(db,new Date('2027-01-04T08:00:00.000Z'))).queued,0);
  const key=[...db.store.keys()].find(key=>key.startsWith('_niazOutbox/')),sent=[];
  const send=async(_,value)=>{sent.push(value);return {gmailId:'synthetic-'+sent.length};};
- await N.deliverJob(db,db.doc(key),send);assert.equal(sent.length,2);
- await N.deliverJob(db,db.doc(key),send);assert.equal(sent.length,2);
- assert.equal([...db.store.keys()].filter(key=>key.startsWith('niazNotificationLog/')).length,2);
- assert.equal((await L.prepareNotices(db,new Date('2027-01-01T08:00:00.000Z'))).queued,1);
+ await N.deliverJob(db,db.doc(key),send);assert.equal(sent.length,1);
+ await N.deliverJob(db,db.doc(key),send);assert.equal(sent.length,1);
+ assert.equal([...db.store.keys()].filter(key=>key.startsWith('niazNotificationLog/')).length,1);
+ assert.equal((await L.prepareNotices(db,new Date('2027-01-01T08:00:00.000Z'))).queued,0);
  const cancelled=db.doc('_niazOutbox/cancelled');await cancelled.set({state:'pending',kind:'seven-day',eventId:'event1',eventStartAt:event.startAt});
- db.store.set('events/event1',{...event,status:'cancelled'});await N.deliverJob(db,cancelled,send);assert.equal(sent.length,2);assert.equal(db.store.get(cancelled.path).state,'suppressed');
+ db.store.set('events/event1',{...event,status:'cancelled'});await N.deliverJob(db,cancelled,send);assert.equal(sent.length,1);assert.equal(db.store.get(cancelled.path).state,'suppressed');
 });
 test('Verified-contact self-service excludes internal notes and approval identities; paginates own history',async()=>{
  const db=database({'events/event1':event,'niazSponsors/owner':{ownerKey:person.ownerKey,active:true,name:'Own',notes:'Internal directory note',emailPreferences:{optionalReminders:false}},
@@ -221,35 +222,39 @@ test('Sponsor directory edits preserve optional-email preferences; ambiguous con
  db.store.set('_niazContacts/'+M.sponsorKey(person),{sponsorId:'reviewed-import'});
  await assert.rejects(A.submitEOI(db,{name:'Applicant',eventIds:['event1'],requestId:'request',publicConsent:false,type:'one_time'},person),/reviewed sponsor/);
 });
-test('Notification partial failure retries the same key without repeating logged recipients; settings stop delivery',async()=>{
+test('Notification partial failure retries the same key without repeating logged recipients; settings stop delivery',async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2027-01-08T08:00:00.000Z')});
  const N=require('./niaz-notifications'),email='coordinator@example.org';
- const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,coordinatorEmails:[email]},
-  'niazSponsors/sponsor1':{name:'Own',email:'sponsor@example.org',active:true},'_niazOutbox/notice':{state:'pending',nextAttempt:0,kind:'approval',eventId:'event1',sponsorId:'sponsor1'}});
+ const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,coordinatorEmails:[email,'second@example.org']},
+  'users/second':{email:'second@example.org',role:'admin'},'adminAllowlist/second@example.org':{uid:'second',modules:['niaz']},'niazSponsors/sponsor1':{name:'Own',email:'sponsor@example.org',active:true},'_niazOutbox/notice':{state:'pending',nextAttempt:0,kind:'seven-day',eventId:'event1',eventStartAt:event.startAt,sponsorId:'sponsor1'}});
  const keys=[],ref=db.doc('_niazOutbox/notice');let failed=false;
- const send=async(_,notice)=>{keys.push(notice.key);if(notice.to==='sponsor@example.org'&&!failed){failed=true;throw Error('Synthetic uncertain provider response');}return {gmailId:'synthetic-id'};};
+ const send=async(_,notice)=>{keys.push(notice.key);if(notice.to==='second@example.org'&&!failed){failed=true;throw Error('Synthetic uncertain provider response');}return {gmailId:'synthetic-id'};};
  assert.equal((await N.deliverJob(db,ref,send)).delayed,true);assert.equal(db.store.get(ref.path).state,'retry');
  db.store.set(ref.path,{...db.store.get(ref.path),nextAttempt:0});
  assert.equal((await N.deliverJob(db,ref,send)).sent,2);assert.equal(keys.length,3);assert.equal(keys[1],keys[2]);assert.equal(db.store.get(ref.path).state,'sent');
- await ref.set({state:'pending',nextAttempt:0,kind:'approval',eventId:'event1'});
+ await ref.set({state:'pending',nextAttempt:0,kind:'seven-day',eventId:'event1',eventStartAt:event.startAt});
  db.store.set('_niazPrivate/settings',{notificationEnabled:false});assert.equal((await N.deliverJob(db,ref,send)).ignored,true);assert.equal(keys.length,3);
 });
-test('Optional reminders respect preferences; essential notices remain; reschedule and recipient revocation suppress stale sends',async()=>{
+test('Optional reminders respect preferences; essential notices remain; reschedule and recipient revocation suppress stale sends',async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2027-01-08T08:00:00.000Z')});
  const N=require('./niaz-notifications'),email='coordinator@example.org';
  const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,coordinatorEmails:[email]},
   'niazSponsors/sponsor1':{name:'Own',email:'sponsor@example.org',active:true,emailPreferences:{optionalReminders:false}},'niazSponsorships/a':{sponsorId:'sponsor1',eventId:'event1',status:'approved'}});
  const config=db.store.get('_niazPrivate/settings');
- assert.equal((await N.prepareDelivery(db,{kind:'three-day',eventId:'event1',eventStartAt:event.startAt},config)).length,1);
- assert.equal((await N.prepareDelivery(db,{kind:'seven-day',eventId:'event1',eventStartAt:event.startAt},config)).length,2);
+ assert.equal((await N.prepareDelivery(db,{kind:'three-day',eventId:'event1',eventStartAt:event.startAt},config)).length,0);
+ assert.equal((await N.prepareDelivery(db,{kind:'seven-day',eventId:'event1',eventStartAt:event.startAt},config)).length,1);
  const ref=db.doc('_niazOutbox/reschedule');await ref.set({state:'pending',kind:'seven-day',eventId:'event1',eventStartAt:event.startAt,nextAttempt:0});
  const sent=[];await N.deliverJob(db,ref,async(_,notice)=>{sent.push(notice);db.store.set('events/event1',{...event,startAt:'2027-02-01T08:00:00.000Z'});return {gmailId:'synthetic'};});
  assert.equal(sent.length,1);
  db.store.set('adminAllowlist/'+email,{uid:'coordinator',modules:[]});
- await assert.rejects(N.prepareDelivery(db,{kind:'approval',eventId:'event1'},config),/No active/);
+ db.store.set('events/event1',event);
+ await assert.rejects(N.prepareDelivery(db,{kind:'seven-day',eventId:'event1',eventStartAt:event.startAt},config),/No active/);
 });
-test('Expired notification leases become retryable; repeated failures require attention instead of success',async()=>{
+test('Expired notification leases become retryable; repeated failures require attention instead of success',async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2027-01-08T08:00:00.000Z')});
  const N=require('./niaz-notifications'),email='coordinator@example.org';
  const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,coordinatorEmails:[email]},
-  '_niazOutbox/failed':{state:'sending',leaseUntil:Date.now()-1,nextAttempt:0,attempts:4,kind:'approval',eventId:'event1'}});
+  '_niazOutbox/failed':{state:'sending',leaseUntil:Date.now()-1,nextAttempt:0,attempts:4,kind:'seven-day',eventId:'event1',eventStartAt:event.startAt}});
  const ref=db.doc('_niazOutbox/failed');
  assert.equal((await N.deliverJob(db,ref,async()=>{throw Error('Synthetic unavailable provider');})).delayed,true);
  assert.equal(db.store.get(ref.path).state,'attention');assert.equal(db.store.get(ref.path).leaseUntil,0);
@@ -269,11 +274,12 @@ test('Verified EOI preserves coordinator contacts and fields, flags name differe
  assert.equal(replay.id,first.id);assert.equal((await db.collection('niazEOIs').get()).size,1);
  await assert.rejects(A.submitEOI(db,{...input,name:'Changed offer'},mobilePerson),/details changed/);
 });
-test('Activation suppresses and logs historical backlog instead of sending it',async()=>{
+test('Activation suppresses and logs historical backlog instead of sending it',async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2027-01-08T08:00:00.000Z')});
  const N=require('./niaz-notifications'),email='coordinator@example.org';
  const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,enabledAt:'2026-11-09T07:00:00Z',coordinatorEmails:[email]},
   '_niazOutbox/old':{state:'pending',nextAttempt:0,kind:'decision',eventId:'event1',createdAt:'2026-11-08T07:00:00Z'},
-  '_niazOutbox/new':{state:'pending',nextAttempt:0,kind:'approval',eventId:'event1',createdAt:'2026-11-09T07:00:01Z'}});
+  '_niazOutbox/new':{state:'pending',nextAttempt:0,kind:'seven-day',eventId:'event1',eventStartAt:event.startAt,createdAt:'2026-11-09T07:00:01Z'}});
  const sent=[],send=async(_,notice)=>{sent.push(notice);return {gmailId:'synthetic'};};
  await N.deliverJob(db,db.doc('_niazOutbox/old'),send);assert.equal(sent.length,0);assert.equal(db.store.get('_niazOutbox/old').state,'suppressed');
  assert.equal((await db.collection('niazNotificationLog').get()).docs[0].data().reason,'pre-activation');
@@ -301,9 +307,10 @@ test('Uncertain service-email send never blindly repeats while Gmail search inde
   visible=true;const result=await G.sendServiceNotice(db,notice);assert.equal(result.reconciled,true);assert.equal(posts,1);
  }finally{global.fetch=previousFetch;}
 });
-test('Provider-uncertain notice goes to attention rather than assuming retry is safe',async()=>{
+test('Provider-uncertain notice goes to attention rather than assuming retry is safe',async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2027-01-08T08:00:00.000Z')});
  const N=require('./niaz-notifications'),email='coordinator@example.org';
- const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,coordinatorEmails:[email]},'_niazOutbox/uncertain':{state:'pending',kind:'approval',eventId:'event1'}});
+ const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,coordinatorEmails:[email]},'_niazOutbox/uncertain':{state:'pending',kind:'seven-day',eventId:'event1',eventStartAt:event.startAt}});
  await N.deliverJob(db,db.doc('_niazOutbox/uncertain'),async()=>{throw Object.assign(Error('Synthetic uncertain delivery'),{deliveryUncertain:true});});
  assert.equal(db.store.get('_niazOutbox/uncertain').state,'attention');
  assert.ok(db.store.get('_niazOutbox/uncertain').lastError.includes('Reconcile'));
@@ -325,7 +332,7 @@ test('Import preview batches unique reads and each import transaction uses one g
  const rows=Array.from({length:251},(_,i)=>({name:'Synthetic '+i,email:'batch'+i+'@example.org',eventDate:'2027-01-11',eventId:'event1',type:'annual',role:'joint',publicConsent:false}));
  const preview=await A.previewImport(db,rows,actor);assert.equal(counts.queries,1);assert.equal(counts.bulk,3);
  let result={offset:0};while(result.state!=='complete')result=await A.importStep(db,preview.jobId,result.offset,actor);
- assert.equal(counts.txBulk,7);assert.equal(counts.txGet,7);assert.equal(result.offset,251);
+ assert.equal(counts.txBulk,7);assert.equal(counts.txGet,14);assert.equal(result.offset,251);
  await assert.rejects(A.previewImport(db,Array(501).fill(rows[0]),actor),/500/);
 });
 test('Coordinator saves retain name-review flags and cannot override verified sponsor consent',async()=>{
@@ -356,7 +363,8 @@ test('Coordinator EOI queue enriches programme metadata in bulk without changing
  assert.equal(result.items[0].events[0].reason,'Original reason');assert.equal(result.items[0].events[1].eventTitle,'Programme no longer available');assert.equal(result.items[0].events[1].eventStartAt,null);
  assert.equal(result.next,null);assert.equal(db.store.get('niazEOIs/offer').events[0].eventTitle,undefined);
 });
-test('Attention acknowledgment is audited/idempotent, retains conflicts and never schedules delivery',async()=>{
+test('Attention acknowledgment is audited/idempotent, retains conflicts and never schedules delivery',async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2027-01-08T08:00:00.000Z')});
  const original={kind:'integration-conflict',state:'attention',lastError:'Reconciliation required',attempts:3,nextAttempt:123,leaseUntil:0};
  const db=database({'_niazOutbox/conflict':original,'_niazOutbox/pending':{state:'pending'},'_niazPrivate/settings':{notificationEnabled:true}});
  await A.acknowledgeAttention(db,{id:'conflict'},actor);
@@ -382,14 +390,14 @@ test('Attention HTTP action requires current Niaz management and POST',async()=>
  }
  assert.equal((await db.collection('auditLog').get()).size,1);
 });
-test('Sponsor service notices use plain language and self-service links, not admin-only instructions',async()=>{
- const N=require('./niaz-notifications'),email='coordinator@example.org';
- const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'niazSponsors/sponsor':{name:'Synthetic Sponsor',email:'sponsor@example.org',active:true}});
- const notices=await N.prepareDelivery(db,{kind:'approval',eventId:'event1',sponsorId:'sponsor'},{coordinatorEmails:[email]});
- const sponsor=notices.find(row=>row.to==='sponsor@example.org'),coordinator=notices.find(row=>row.to===email);
- assert.ok(sponsor.subject.includes('sponsorship is approved'));assert.ok(sponsor.body.includes(event.title));assert.ok(sponsor.body.includes('Reply to this email'));assert.ok(sponsor.body.includes('/niaz/'));assert.ok(!sponsor.body.includes('Niaz Administration'));
- assert.ok(coordinator.body.includes('Niaz Administration'));
+test('Approved EOI sends only to its active sponsor and is suppressed after assignment removal',async()=>{
+ const N=require('./niaz-notifications');
+ const db=database({'events/event1':event,'niazSponsors/sponsor':{name:'Synthetic Sponsor',email:'sponsor@example.org',active:true},'niazEOIs/request':{events:[{eventId:'event1',status:'approved'}]},'niazSponsorships/assignment':{eventId:'event1',sponsorId:'sponsor',status:'approved'}});
+ const job={kind:'decision',decision:'approved',eventId:'event1',sponsorId:'sponsor',eoiId:'request',assignmentId:'assignment'};
+ const notices=await N.prepareDelivery(db,job,{});assert.equal(notices.length,1);assert.equal(notices[0].to,'sponsor@example.org');assert.ok(notices[0].body.includes('/niaz/'));
+ db.store.set('niazSponsorships/assignment',{eventId:'event1',sponsorId:'sponsor',status:'cancelled'});assert.deepEqual(await N.prepareDelivery(db,job,{}),[]);
 });
+
 test('Deterministic integration conflicts record attention while transient failures propagate for retry',async()=>{
  const db=database({}),failure=M.fault(409,'Synthetic reconciliation required');
  assert.equal((await L.triggerAction(db,'sandbox-donation','txn',async()=>{throw failure;})).attention,true);
@@ -406,4 +414,37 @@ test('Deterministic integration conflicts record attention while transient failu
  assert.equal(db.store.get(conflict.ref.path).lastError,failure.message);
  await assert.rejects(L.triggerAction(db,'event','event1',async()=>{throw Error('Transient unavailable');}),/Transient/);
  await assert.rejects(L.triggerAction(db,'sandbox-donation','txn',async()=>{throw Object.assign(M.fault(409,'Source changed'),{retryable:true});}),/Source changed/);
+});
+
+test('Only opted-in three-day sponsors and seven-day coordinators receive reminders; all other mail is blocked',async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2027-01-08T08:00:00Z')});
+ const N=require('./niaz-notifications'),email='coordinator@example.org';
+ const db=database({'events/event1':event,'users/coordinator':{email,role:'admin'},['adminAllowlist/'+email]:{uid:'coordinator',modules:['niaz']},'_niazPrivate/settings':{notificationEnabled:true,threeDayFollowup:true,coordinatorEmails:[email]},'niazSponsors/s':{name:'Synthetic',email:'sponsor@example.org',active:true,emailPreferences:{optionalReminders:true,consentVersion:'niaz-reminders-v2'}},'niazSponsorships/a':{sponsorId:'s',eventId:'event1',status:'approved'},'niazEventCoverage/event1':{arrangementConfirmed:true,eventReviewRequired:true}});
+ const config=db.store.get('_niazPrivate/settings');assert.equal((await L.prepareNotices(db,new Date())).queued,1);
+ const job={kind:'three-day',eventId:'event1',eventStartAt:event.startAt};assert.deepEqual((await N.prepareDelivery(db,job,config)).map(n=>n.to),['sponsor@example.org']);
+ db.store.get('niazSponsors/s').emailPreferences.optionalReminders=false;assert.deepEqual(await N.prepareDelivery(db,job,config),[]);
+ for(const kind of ['monthly','cancellation','reschedule','eoi','approval','review','annual-review','sandbox-donation','reassignment','alternative'])assert.deepEqual(await N.prepareDelivery(db,{kind,eventId:'event1'},config),[],kind);
+ assert.deepEqual(await N.prepareDelivery(db,{kind:'decision',decision:'rejected',eventId:'event1'},config),[]);
+});
+test('Event plan atomically retains joint sponsors under MWA and rejects stale edits or inactive assignments',async()=>{
+ const P=require('./niaz-event-plan');const db=database({'events/event1':event,'niazSponsors/s':{active:true},'niazSponsorships/a':{sponsorId:'s',eventId:'event1',status:'approved',type:'one_time',role:'sole',revision:1}});
+ const input={eventId:'event1',revision:0,mwaArranged:true,arrangementConfirmed:false,acceptExtraEOIs:true,notes:'Kitchen plan',fundsRequiredCents:15000,baseline:[{id:'a',revision:1}],assignments:[{id:'a',sponsorId:'s',revision:1,type:'one_time',role:'sole'}]};
+ await P.saveEventPlan(db,input,actor);assert.equal(db.store.get('niazSponsorships/a').role,'joint');assert.equal(db.store.get('niazEventCoverage/event1').fundsRequiredCents,15000);
+ await assert.rejects(P.saveEventPlan(db,input,actor),/changed/);
+ await P.saveEventPlan(db,{...input,revision:1,baseline:[{id:'a',revision:2}],assignments:[]},actor);assert.equal(db.store.get('niazSponsorships/a').status,'cancelled');assert.ok(db.store.has('niazSponsors/s'));
+ const before=JSON.stringify([...db.store]);await assert.rejects(P.saveEventPlan(db,{...input,revision:2,baseline:[],assignments:[{sponsorId:'missing',type:'one_time'}]},actor),/active/);assert.equal(JSON.stringify([...db.store]),before);
+});
+test('Discretionary EOI creates an active sponsor with explicit reminder preference and resolves at approval',async()=>{
+ const db=database({'events/event1':event});const request=await A.submitEOI(db,{name:'Synthetic',eventIds:['event1'],requestId:'discretion',type:'discretion',publicConsent:true,optionalReminders:true},person);
+ const sponsor=db.store.get('niazSponsors/'+request.sponsorId);assert.equal(sponsor.active,true);assert.equal(sponsor.emailPreferences.optionalReminders,true);
+ await A.decideEOI(db,request.id,{eventId:'event1',revision:1,decision:'approved',type:'one_time',role:'sole',reason:'Finalised'},actor);
+ const assignment=(await db.collection('niazSponsorships').get()).docs[0].data();assert.equal(assignment.type,'one_time');assert.equal((await A.eventDetail(db,'event1',{publicOnly:true})).sponsors[0].name,'Synthetic');
+});
+
+test('Direct coordinator assignment and reviewed import are immediately approved, without an EOI or approval email',async()=>{
+ const db=database({'events/event1':event,'events/event2':event});
+ const sponsor=await A.saveSponsor(db,{name:'Admin-created',email:'admin-created@example.org',publicConsent:true,revision:0},actor);
+ const assigned=await A.assign(db,{sponsorId:sponsor.id,eventId:'event1',type:'one_time',role:'sole',revision:0},actor);assert.equal(assigned.status,'approved');
+ const preview=await A.previewImport(db,[{name:'Imported',email:'imported@example.org',eventDate:'2027-01-11',eventId:'event2',type:'one_time',role:'sole',publicConsent:false}],actor);await A.importStep(db,preview.jobId,0,actor);
+ const imported=(await db.collection('niazSponsorships').where('eventId','==','event2').get()).docs[0].data();assert.equal(imported.status,'approved');assert.equal((await db.collection('niazEOIs').get()).size,0);assert.equal((await db.collection('_niazOutbox').get()).size,0);
 });
