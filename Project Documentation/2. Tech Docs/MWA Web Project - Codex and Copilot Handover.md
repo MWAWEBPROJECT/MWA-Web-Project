@@ -3,6 +3,12 @@
 
 # MWA Web Project — Codex / Copilot handover
 
+## MWA.ai activation verification checkpoint — 11 November 2026
+
+Source c0782ec pushed; mwaAiChat deployed ACTIVE revision mwaaichat-00001-qav, model gemini-3.5-flash-lite/global, enabled. Website Hosting deployed and all 71/71 files matched the enabled build; four route checks HTTP 200. Counter TTL ACTIVE. Requests without App Check rejected 401. Six direct real Gemini prompt/parser checks passed. Headless Chromium real-domain acceptance blocked: Firebase App Check exchange returns 403 “App attestation failed”, so callable correctly rejects missing token with 401; no enforcement relaxation or debug token used. Requires a normal human browser acceptance check before claiming the full browser-to-Gemini flow works. Actual private admin records/sign-in not tested.
+
+Found startup issue: initial auth-ready notification erased an anonymous chat; corrected to clear only on actual uid/admin/module changes. Added regression for startup, grant changes and sign-out, plus clearer browser-verification failure message. This follow-up needs Hosting rebuild/deploy, not backend redeploy. Original broad IAM proposal rejected; inference-only custom-role alternative approved and applied, with no new Firestore/developer permissions. Limits documentation saved and tracked.
+
 ## MWA.ai release preparation — 11 November 2026 — authorised, not yet deployed
 
 Cloud admin OAuth refreshed. API enabled. Automatic approval review rejected creating a new runtime plus broad Vertex/Firestore/developer-act-as grants; rejected command did not run. A materially narrower alternative succeeded: existing website runtime 178942309467-compute@developer.gserviceaccount.com receives custom role mwaAiInference with only aiplatform.endpoints.predict. No new data access or impersonation permission granted. Runtime pinned in mwaAiChat. TTL enable requested for new usage counters only. Six non-sensitive real Gemini 3.5 Flash-Lite/global prompt+parser checks passed, including sign-in continuation; synthetic admin context only. 19/19 focused regression tests passed. Environment flags set locally without printing or tracking secrets. Global processing does not guarantee Australian residency. Current limitations and future review matrix recorded in MWA.ai - Gemini Setup.md, including shared-runtime inference scope. Build, provider/App Check acceptance, scoped deployment and final release checks still to complete. No claims of deployment in this preparation entry.
