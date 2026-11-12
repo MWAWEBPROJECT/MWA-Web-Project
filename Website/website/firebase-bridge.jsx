@@ -19,6 +19,7 @@ import {schemes,defaults,applyAppearance,normaliseSettings} from '../shared/appe
 import './firebase-website.css';
 import './website-polish.css';
 import './website-polish.js';
+import {initMobileMenu} from './mobile-menu.js';
 import './solar-panel.js';
 import {mountCalendarShell} from './calendar-shell.js';
 import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
@@ -86,6 +87,7 @@ const sessionRoot=document.createElement('span');sessionRoot.className='admin-he
 adminHeader.replaceWith(sessionRoot);
 createRoot(sessionRoot).render(<AuthProvider><WorkspaceBoundary><Suspense fallback={<p role="status">Opening your workspace…</p>}><WebsiteSession/>{niazRoute&&createPortal(<NiazEOI/>,document.querySelector('#niaz-main'))}</Suspense></WorkspaceBoundary></AuthProvider>);
 mountCalendarShell();
+initMobileMenu();
 
 if(location.pathname==='/')import('./community-calendar.jsx').then(module=>module.mountCommunityCalendar()).catch(error=>console.error('Community calendar could not open.',error));
 
