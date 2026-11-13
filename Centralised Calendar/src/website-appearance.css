@@ -75,3 +75,11 @@ body{background:var(--background);color:var(--foreground)}
 .day-item{border:2px solid var(--booking-outline,var(--border));background:var(--card)}
 .agenda-item.booking-outlined{padding:10px 12px;margin:8px 0;border:2px solid var(--booking-outline,var(--border));border-radius:10px;background:var(--card);color:var(--foreground)}
 .agenda-item.booking-outlined:hover{background:var(--secondary)}
+
+/* Separate hues identify booking types independently of the surrounding website palette. */
+:root{--booking-distinct-programmes:#2563eb;--booking-distinct-events:#7c3aed;--booking-distinct-maintenance:#b45309;--booking-distinct-internal:#be185d;--booking-distinct-volunteers:#15803d}
+:root[data-mode=dark]{--booking-distinct-programmes:#60a5fa;--booking-distinct-events:#c4b5fd;--booking-distinct-maintenance:#fbbf24;--booking-distinct-internal:#f9a8d4;--booking-distinct-volunteers:#4ade80}
+.dept-chips .chip,.day-item,.agenda-item.booking-outlined{box-shadow:0 3px 8px -3px color-mix(in srgb,var(--booking-outline,var(--border)) 28%,transparent)}
+.calendar-date .ev{box-shadow:0 2px 4px -1px color-mix(in srgb,var(--booking-outline,var(--border)) 22%,transparent)}
+.dept-chips .chip:hover{box-shadow:0 0 0 1px var(--booking-outline),0 4px 10px -3px color-mix(in srgb,var(--booking-outline) 35%,transparent)}
+.dept-chips .chip[aria-pressed=false]{box-shadow:none}

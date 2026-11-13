@@ -155,7 +155,7 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
     setPrimary(next);
   }
 
-  const bookingOutline = department => {const colour=/^#[0-9a-f]{6}$/i.test(department?.colorHex||'')?department.colorHex:({'mwa programs':'#2563eb','maintenance':'#eb2424','events booking':'#eb2498','private internal bookings':'#c3eb24','volunteers events':'#59eb24'}[String(department?.name||'').trim().toLowerCase()]||'#64748b');return `color-mix(in srgb, ${colour} 55%, var(--foreground))`;};
+  const bookingOutline = department => {const type={'mwa programs':'programmes','maintenance':'maintenance','events booking':'events','private internal bookings':'internal','volunteers events':'volunteers'}[String(department?.name||'').trim().toLowerCase()];if(type)return `var(--booking-distinct-${type})`;const colour=/^#[0-9a-f]{6}$/i.test(department?.colorHex||'')?department.colorHex:'#64748b';return `color-mix(in srgb, ${colour} 55%, var(--foreground))`;};
   const deptColor = deptId => bookingOutline(departments.find(d=>d.id===deptId));
   const makeCell = (key) => ({ key, date: keyToDate(key), hijri: getHijriParts(key, hijriOverrides), inMonth: true });
   const weekStart = mondayOf(selectedKey);
