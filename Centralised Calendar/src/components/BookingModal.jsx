@@ -1,3 +1,5 @@
+import {audienceError} from '../utils/venuePolicy.js';
+import {AUDIENCES} from '../utils/audience.js';
 import AdminBackButton from './AdminBackButton.jsx';
 import {auth} from '../firebase/firebase.js';
 import {onAuthStateChanged} from 'firebase/auth';
@@ -216,14 +218,16 @@ export function BookingModalInner({
     if (!watchConflicts || !form.venueId || !range || new Date(range.endAt) <= new Date(range.startAt)) {
       setConflict(null); setConflictErr(''); return undefined;
     }
+    const invalid=audienceError(venues.find(v=>v.id===form.venueId),form.audience);
+    if(invalid){setConflict(null);setConflictErr(invalid);return undefined;}
     let cancelled = false;
     const t = setTimeout(() => {
-      checkSlotConflicts({ venueId: form.venueId, startAt: range.startAt, endAt: range.endAt, excludeId: editing?.id })
+      checkSlotConflicts({ audience:form.audience, venueId: form.venueId, startAt: range.startAt, endAt: range.endAt, excludeId: editing?.id })
         .then(r => { if (!cancelled) { setConflict(r); setConflictErr(''); } })
         .catch(() => { if (!cancelled) { setConflict(null); setConflictErr("Couldn't check conflicts right now. Please retry or reload."); } });
     }, 400);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [watchConflicts, form.venueId, range, editing?.id]);
+  }, [watchConflicts, form.venueId, form.audience, range, editing?.id]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -275,7 +279,7 @@ export function BookingModalInner({
     if (!range) throw new Error('Choose a valid booking date and time.');
     return {
       timeMode: form.timeMode,
-      title: form.title, departmentId: form.departmentId, venueId: form.venueId,
+      title: form.title, departmentId: form.departmentId, venueId: form.venueId, audience: form.audience,
       startAt: range.startAt, endAt: range.endAt,
       dateBasis: form.basis,
       hijriDate: form.basis === 'h' ? { day: Number(form.hDay), month: Number(form.hMonth), year: Number(form.hYear) } : null,
@@ -413,6 +417,7 @@ export function BookingModalInner({
             <div>
               <b>Time:</b> {hm(editing.startAt)}{sp ? ` (${sp})` : ''} – {hm(editing.endAt)}{ep ? ` (${ep})` : ''}{nextDay ? ' next day' : ''}
             </div>
+            <div><b>Audience:</b> {AUDIENCES[editing.audience || 'family']}</div>
             {editing.venueName && <div><b>Venue:</b> {editing.venueName}</div>}
             {!editing.masked && editing.departmentName && <div><b>Booking type:</b> {editing.departmentName}</div>}
             {!editing.masked && editing.speakerName && <div><b>Speaker:</b> {editing.speakerName}</div>}
@@ -452,7 +457,7 @@ export function BookingModalInner({
     if (form.basis === 'h') recurrence.hijriStart = { day: Number(form.hDay), month: Number(form.hMonth), year: Number(form.hYear) };
     else recurrence.startDate = form.date;
     return {
-      title: form.title, departmentId: form.departmentId, venueId: form.venueId,
+      title: form.title, departmentId: form.departmentId, venueId: form.venueId, audience: form.audience,
       contactName: form.contactName, contactEmail: form.contactEmail, contactPhone: form.contactPhone,
       notes: form.notes, visibility: form.visibility, status: rep.status, timeMode: form.timeMode, recurrence,
       ...programPayload()
@@ -601,7 +606,7 @@ export function BookingModalInner({
   function adminPatch() {
     return {
       timeMode: form.timeMode,
-      title: form.title, departmentId: form.departmentId, venueId: form.venueId,
+      title: form.title, departmentId: form.departmentId, venueId: form.venueId, audience: form.audience,
       ...range, notes: form.notes,
       contactName: form.contactName, contactEmail: form.contactEmail, contactPhone: form.contactPhone,
       visibility: form.visibility,
@@ -629,6 +634,8 @@ export function BookingModalInner({
 
         <form onSubmit={isAdmin && editing ? handleAdminSave : handlePublicSubmit}>
           <fieldset className="dlg-fields" disabled={readOnly || busy}>
+            <label htmlFor="booking-audience">Programme audience</label>
+            <select id="booking-audience" value={form.audience} onChange={e => set('audience', e.target.value)} required>{Object.entries(AUDIENCES).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
             <label>Title</label>
             <input value={form.title} onChange={e => set('title', e.target.value)} required />
 
@@ -644,7 +651,7 @@ export function BookingModalInner({
                 <label>Venue</label>
                 <select value={form.venueId} onChange={e => set('venueId', e.target.value)} required>
                   <option value="">Select…</option>
-                  {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  {venues.map(v => <option key={v.id} value={v.id} disabled={!!audienceError(v,form.audience)}>{v.name}{audienceError(v,form.audience) ? " — Ladies only" : ""}</option>)}
                 </select>
               </div>
             </div>
@@ -936,7 +943,7 @@ function emptyForm(editing, initialDate, isAdmin) {
   if (editing) {
     const dateKey = editing.startAt ? dateKeyInOrgTz(editing.startAt) : todayStr();
     return {
-      title: editing.title || '', departmentId: editing.departmentId || '', venueId: editing.venueId || '',
+      audience: editing.audience || 'family', title: editing.title || '', departmentId: editing.departmentId || '', venueId: editing.venueId || '',
       basis: 'g', date: dateKey,
       hDay: '', hMonth: '1', hYear: '',
       start: isoTime(editing.startAt), end: isoTime(editing.endAt),
@@ -950,7 +957,7 @@ function emptyForm(editing, initialDate, isAdmin) {
     };
   }
   return {
-    title: '', departmentId: '', venueId: '', basis: 'g', date: initialDate || todayStr(),
+    audience: 'family', title: '', departmentId: '', venueId: '', basis: 'g', date: initialDate || todayStr(),
     hDay: '', hMonth: '1', hYear: '',
     start: '09:00', end: '10:00',
     contactName: '', contactEmail: '', contactPhone: '', notes: '',

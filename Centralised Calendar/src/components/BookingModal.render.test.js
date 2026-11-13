@@ -27,7 +27,7 @@ test('booking gate hides booking fields for visitors and opens directly for auth
  const {BookingModalInner}=await server.ssrLoadModule('/src/components/BookingModal.jsx');
  const props={open:true,onClose:()=>{},venues:[],departments:[],hijriOverrides:[],isAdmin:false};
  globalThis.__bookingUser=null;let html=renderToStaticMarkup(React.createElement(BookingModalInner,props));assert.match(html,/Verify your contact/);assert.doesNotMatch(html,/Contact name/);assert.doesNotMatch(html,/Submit request/);
- globalThis.__bookingUser={uid:'volunteer',emailVerified:true,isAnonymous:false};html=renderToStaticMarkup(React.createElement(BookingModalInner,props));assert.match(html,/Contact name/);assert.match(html,/Submit request/);assert.doesNotMatch(html,/Verify your contact/);
+ globalThis.__bookingUser={uid:'volunteer',emailVerified:true,isAnonymous:false};html=renderToStaticMarkup(React.createElement(BookingModalInner,props));assert.match(html,/Contact name/);assert.match(html,/Programme audience/);for(const label of ['Family Event','Gents only','Ladies only','Kids only'])assert(html.includes(label));assert.match(html,/Submit request/);assert.doesNotMatch(html,/Verify your contact/);
  html=renderToStaticMarkup(React.createElement(BookingModalInner,{...props,isAdmin:true}));assert.match(html,/Contact name/);assert.doesNotMatch(html,/Verify your contact/);
  globalThis.__bookingUser={uid:'anon',emailVerified:false,isAnonymous:true};html=renderToStaticMarkup(React.createElement(BookingModalInner,props));assert.match(html,/Verify your contact/);
  const programme={id:'event_1-A',title:'Synthetic programme',startAt:'2027-01-10T23:30:00Z',endAt:'2027-01-11T01:00:00Z',departmentName:'MWA Programs',status:'confirmed',visibility:'public'};

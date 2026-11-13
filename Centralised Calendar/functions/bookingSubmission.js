@@ -64,7 +64,7 @@ function createBookingSubmissionService(deps) {
       }
 
       const overlaps = await findOverlaps(
-        payload.venueId, payload.startAt, payload.endAt, null, tx, resolveBufferHours(venue)
+        payload.venueId, payload.startAt, payload.endAt, null, tx, resolveBufferHours(venue), undefined, payload.audience
       );
       if(submitterIsAdmin&&overlaps.length)throw new HttpsError('failed-precondition','This venue has an overlapping booking. Resolve the clash before confirming an admin booking.');
       const conflictWith = overlaps.map(overlap => overlap.id);

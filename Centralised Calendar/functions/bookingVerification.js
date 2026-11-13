@@ -41,6 +41,7 @@ function canonicalBookingPayload(data){
   title:string(data.title,200,'title',true),
   departmentId:string(data.departmentId,200,'booking type',true),
   venueId:string(data.venueId,200,'venue',true),
+  audience:require('./audience').normalizeAudience(data.audience),
   startAt:start.toISOString(),
   endAt:end.toISOString(),
   dateBasis:basis,

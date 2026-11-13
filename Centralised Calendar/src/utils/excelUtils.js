@@ -5,11 +5,11 @@ export const EXPORT_HEADERS = [
   'Id', 'Title', 'Booking Type', 'Venue', 'Date Basis', 'Date',
   'Start Type', 'Start', 'Start Prayer', 'Start Offset', 'End Type', 'End', 'End Prayer', 'End Offset',
   'Gregorian Date', 'Hijri Date', 'Status', 'Visibility', 'Speaker Name', 'Program Details',
-  'Contact Name', 'Contact Email', 'Contact Phone', 'Notes', 'Overlap', 'Series Id', 'Recurrence'
+  'Contact Name', 'Contact Email', 'Contact Phone', 'Notes', 'Audience', 'Overlap', 'Series Id', 'Recurrence'
 ];
 
 /** Columns in the import template (everything except the informational export-only tail). */
-export const TEMPLATE_COLUMN_COUNT = EXPORT_HEADERS.indexOf('Notes') + 1;
+export const TEMPLATE_COLUMN_COUNT = EXPORT_HEADERS.indexOf('Audience') + 1;
 
 export const PRAYER_NAMES = ['Fajr', 'Zohrain', 'Asr', 'Maghreb', 'Isha'];
 const prayerName = (p) => (p && p.key ? PRAYER_NAMES.find(n => n.toLowerCase() === p.key) || p.key : '');
@@ -66,7 +66,7 @@ export function bookingsToRows(events, fmt) {
       timeSide(e.endPrayer)[0], fmt.timeKey(e.endAt), timeSide(e.endPrayer)[1], timeSide(e.endPrayer)[2],
       gDmy, hijriToDmy(fmt.hijriParts(e.startAt)),
       e.status, e.visibility || 'private', e.speakerName || '', e.programDetails || '',
-      e.contactName || '', e.contactEmail || '', e.contactPhone || '', e.notes || '',
+      e.contactName || '', e.contactEmail || '', e.contactPhone || '', e.notes || '', ({family:'Family Event',gents:'Gents only',ladies:'Ladies only',kids:'Kids only'})[e.audience||'family'],
       e.hasConflict ? 'yes' : '', e.seriesId || '', recurrenceSummary(e)
     ].map(sanitizeCell);
   });
@@ -81,6 +81,7 @@ export const IMPORT_INSTRUCTIONS = [
   ['Format the Date column as Text (or type it with Excel\'s DD/MM/YYYY date format for Gregorian). Hijri dates must be text.'],
   ['Start / End are 24-hour Australia/Sydney times (HH:MM). End earlier than Start means the booking ends the next day.'],
   ['Start Type / End Type: Fixed (default) uses the Start / End time. Variable uses a prayer time instead: leave the time blank, choose Start Prayer / End Prayer (Fajr, Zohrain, Asr, Maghreb, Isha) and optionally an Offset in minutes (e.g. 15 or -30, max 360). Prayer times are calculated for Muhammadi Welfare Association, Kemps Creek NSW, on the booking date.'],
+  ['Audience: Family Event (default for new rows), Gents only, Ladies only or Kids only. Halls 4, 5 and 6 require Ladies only. Blank audience on an existing Id preserves its saved audience.'],
   ['Speaker Name and Program Details are optional (used for MWA Programs).'],
   ['Status: pending, confirmed (default), rejected or cancelled. Visibility: public (default) or private.'],
   ['Use the dropdowns for Date Basis, Booking Type, Venue, Start/End Type, Start/End Prayer, Status and Visibility. Booking Type and Venue must match existing names exactly (the lists reflect the current names when the template was downloaded). Leave Id blank to create; an existing Id updates that booking.'],
@@ -90,10 +91,10 @@ export const IMPORT_INSTRUCTIONS = [
 export function templateRows() {
   return [
     EXPORT_HEADERS.slice(0, TEMPLATE_COLUMN_COUNT),
-    ['', 'Example event (Gregorian)', 'Youth', 'Main Hall', 'Gregorian', '05/10/2026', 'Fixed', '10:30', '', '', 'Fixed', '15:00', '', '', '', '', 'confirmed', 'public', '', '', 'Jane Citizen', 'jane@example.com', '0400 000 000', 'Optional notes'],
-    ['', 'Example event (Hijri)', 'Youth', 'Main Hall', 'Hijri', '23/04/1448', 'Fixed', '10:30', '', '', 'Fixed', '15:00', '', '', '', '', 'confirmed', 'public', '', '', '', '', '', 'Date is Hijri day/month/year (AH)'],
-    ['', 'Overnight example', 'Youth', 'Main Hall', 'Gregorian', '10/10/2026', 'Fixed', '18:00', '', '', 'Fixed', '06:00', '', '', '', '', 'confirmed', 'public', '', '', '', '', '', 'End earlier than start = ends next day'],
-    ['', 'Majlis (prayer time example)', 'MWA Programs', 'Main Hall', 'Gregorian', '16/10/2026', 'Variable', '', 'Maghreb', '15', 'Fixed', '21:30', '', '', '', '', 'confirmed', 'public', 'Speaker name', 'Program details', '', '', '', 'Starts 15 min after Maghreb']
+    ['', 'Example event (Gregorian)', 'Youth', 'Main Hall', 'Gregorian', '05/10/2026', 'Fixed', '10:30', '', '', 'Fixed', '15:00', '', '', '', '', 'confirmed', 'public', '', '', 'Jane Citizen', 'jane@example.com', '0400 000 000', 'Optional notes', 'Family Event'],
+    ['', 'Example event (Hijri)', 'Youth', 'Main Hall', 'Hijri', '23/04/1448', 'Fixed', '10:30', '', '', 'Fixed', '15:00', '', '', '', '', 'confirmed', 'public', '', '', '', '', '', 'Date is Hijri day/month/year (AH)', 'Family Event'],
+    ['', 'Overnight example', 'Youth', 'Main Hall', 'Gregorian', '10/10/2026', 'Fixed', '18:00', '', '', 'Fixed', '06:00', '', '', '', '', 'confirmed', 'public', '', '', '', '', '', 'End earlier than start = ends next day', 'Family Event'],
+    ['', 'Majlis (prayer time example)', 'MWA Programs', 'Main Hall', 'Gregorian', '16/10/2026', 'Variable', '', 'Maghreb', '15', 'Fixed', '21:30', '', '', '', '', 'confirmed', 'public', 'Speaker name', 'Program details', '', '', '', 'Starts 15 min after Maghreb', 'Family Event']
   ];
 }
 export function filterByDateRange(events, fromKey, toKey, dateKey) {

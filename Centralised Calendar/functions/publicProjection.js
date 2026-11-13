@@ -35,6 +35,7 @@ function projectPublicEvent(d, id, hijri) {
     return {
       ...base,
       title: d.title,
+      audience: d.audience || 'family',
       departmentId: d.departmentId,
       departmentName: d.departmentName || null,
       speakerName: d.speakerName || '',

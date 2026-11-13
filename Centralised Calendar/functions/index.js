@@ -1,3 +1,6 @@
+const {audienceError,venueConflictReason}=require('./venuePolicy');
+const {normalizeAudience:normalizeAudienceValue}=require('./audience');
+function normalizeAudience(value){try{return normalizeAudienceValue(value);}catch(e){throw new HttpsError('invalid-argument',e.message);}}
 const {resolveAdmin}=require('./moduleAccess');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldPath, FieldValue, Timestamp } = require('firebase-admin/firestore');
@@ -117,6 +120,7 @@ function sanitizeVisibility(value) {
 function programFields(data, timeMode) {
   const custom = sanitizeTimeMode(timeMode !== undefined ? timeMode : data.timeMode) === 'custom';
   return {
+    audience: normalizeAudience(data.audience),
     speakerName: data.speakerName ? String(data.speakerName).slice(0, 200) : '',
     programDetails: data.programDetails ? String(data.programDetails).slice(0, 2000) : '',
     startPrayer: custom ? sanitizePrayer(data.startPrayer) : null,
@@ -156,9 +160,8 @@ async function loadConflictScope(venueId, tx, startAt, endAt, bufferOverride, ca
   const cand = vById.get(venueId);
   if (!cand) throw new HttpsError('not-found', 'Venue not found.');
   const candBuf = bufferOverride !== undefined ? bufferOverride : resolveBufferHours(cand);
-  const ids = isWholeSiteVenue(cand)
-    ? venues.map(v => v.id)
-    : [venueId, ...venues.filter(isWholeSiteVenue).map(v => v.id)];
+  // Audience-dependent rules can connect distinct halls; read every venue in the bounded time window.
+  const ids = venues.map(v => v.id);
   const scopedIds = [...new Set(ids)];
   const maxExistingBuffer = Math.max(0, ...scopedIds.map(id => resolveBufferHours(vById.get(id))));
   const startMs = new Date(startAt).getTime(), endMs = new Date(endAt).getTime();
@@ -188,13 +191,16 @@ async function loadConflictScope(venueId, tx, startAt, endAt, bufferOverride, ca
 
 /** Find other pending/confirmed bookings that conflict with a candidate slot: same venue or a whole-site
  * venue, symmetric, each booking occupying [start, end + its venue's buffer]. */
-async function findOverlaps(venueId, startAt, endAt, excludeId, tx, bufferHours, cachedVenues) {
+async function findOverlaps(venueId, startAt, endAt, excludeId, tx, bufferHours, cachedVenues, audience) {
   const { candBuf, events, vById } = await loadConflictScope(venueId, tx, startAt, endAt, bufferHours, cachedVenues);
-  const cand = { startAt, endAt, _buf: candBuf };
+  if(audience===undefined&&excludeId){const ref=db.collection('events').doc(excludeId);const snap=await (tx?tx.get(ref):ref.get());audience=snap.exists?snap.data().audience:undefined;}
+  const cand = { venueId, audience:normalizeAudience(audience), startAt, endAt, _buf: candBuf };
+  const invalid=audienceError(vById.get(venueId),cand.audience);if(invalid)throw new HttpsError('failed-precondition',invalid);
   return events
-    .filter(d => d.id !== excludeId && rangesConflict(cand, d, 0))
+    .filter(d => d.id !== excludeId && venueConflictReason(cand,d,vById.get(venueId),vById.get(d.venueId)) && rangesConflict(cand, d, 0))
     .map(d => ({
       id: d.id, title: d.title, status: d.status, startAt: d.startAt, endAt: d.endAt,
+      reason:venueConflictReason(cand,d,vById.get(venueId),vById.get(d.venueId)),
       departmentName: d.departmentName, contactName: d.contactName, visibility: d.visibility,
       venueName: d.venueName || (vById.get(d.venueId) || {}).name || ''
     }));
@@ -204,7 +210,7 @@ async function findOverlaps(venueId, startAt, endAt, excludeId, tx, bufferHours,
 async function bulkOverlaps(venueId, items, excludeIds, bufferHours) {
   const starts = items.map(item => new Date(item.startAt).getTime());
   const ends = items.map(item => new Date(item.endAt).getTime());
-  const { candBuf, events } = await loadConflictScope(
+  const { candBuf, events, vById } = await loadConflictScope(
     venueId,
     undefined,
     new Date(Math.min(...starts)).toISOString(),
@@ -216,9 +222,10 @@ async function bulkOverlaps(venueId, items, excludeIds, bufferHours) {
   const result = new Map();
   const details = new Map();
   for (const item of items) {
-    const hits = existing.filter(o => rangesConflict({ ...item, _buf: candBuf }, o, 0));
+    const invalid=audienceError(vById.get(venueId),item.audience||'family');if(invalid)throw new HttpsError('failed-precondition',invalid);
+    const hits = existing.filter(o => venueConflictReason({...item,venueId},o,vById.get(venueId),vById.get(o.venueId)) && rangesConflict({ ...item, _buf: candBuf }, o, 0));
     result.set(item.id, hits.map(o => o.id));
-    details.set(item.id, hits.map(o => ({ id: o.id, title: o.title || '', status: o.status, startAt: o.startAt, endAt: o.endAt })));
+    details.set(item.id, hits.map(o => ({ id: o.id, title: o.title || '', status: o.status, startAt: o.startAt, endAt: o.endAt, reason:venueConflictReason({...item,venueId},o,vById.get(venueId),vById.get(o.venueId)) })));
   }
   result.details = details;
   return result;
@@ -297,6 +304,7 @@ async function prepareBookingPayload(data, submitterIsAdmin) {
     throw new HttpsError('invalid-argument', 'Contact email is required for admin-entered bookings.');
   }
   const venue = await getActiveDoc('venues', canonical.venueId, 'Venue');
+  const invalid=audienceError(venue,canonical.audience);if(invalid)throw new HttpsError('failed-precondition',invalid);
   const department = await getActiveDoc('departments', canonical.departmentId, 'Booking type');
   requireAllowedBookingType(department, submitterIsAdmin);
   const overrides = await getHijriOverrides();
@@ -605,6 +613,7 @@ exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
   let conflictWith = before.conflictWith || [];
   if (status === 'confirmed') {
     const overlaps = await findOverlaps(before.venueId, before.startAt, before.endAt, eventId);
+    if(overlaps.some(o=>o.reason!=='Existing booking at this venue'))throw new HttpsError('failed-precondition','This booking conflicts with the venue availability policy. Change the venue, audience or time before confirming.');
     hasConflict = overlaps.length > 0;
     conflictWith = overlaps.map(o => o.id);
   }
@@ -704,8 +713,9 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
     }
   }
 
-  if (update.venueId !== before.venueId || update.startAt !== before.startAt || update.endAt !== before.endAt) {
-    const overlaps = await findOverlaps(update.venueId, update.startAt, update.endAt, eventId);
+  if (update.venueId !== before.venueId || update.startAt !== before.startAt || update.endAt !== before.endAt || update.audience !== before.audience) {
+    const overlaps = await findOverlaps(update.venueId, update.startAt, update.endAt, eventId, undefined, undefined, undefined, update.audience);
+    if(before.status==='confirmed'&&overlaps.some(o=>o.reason!=='Existing booking at this venue'))throw new HttpsError('failed-precondition','This edit conflicts with the venue availability policy.');
     update.hasConflict = overlaps.length > 0;
     update.conflictWith = overlaps.map(o => o.id);
   }
@@ -738,7 +748,7 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
   let seriesUpdated = 0;
   if (seriesTargets.length) {
     const shared = {};
-    for (const k of ['title', 'departmentId', 'departmentName', 'venueId', 'venueName', 'contactName', 'contactEmail', 'contactPhone', 'notes', 'visibility', 'speakerName', 'programDetails', 'startPrayer', 'endPrayer']) {
+    for (const k of ['title', 'departmentId', 'departmentName', 'venueId', 'venueName', 'contactName', 'contactEmail', 'contactPhone', 'notes', 'visibility', 'audience', 'speakerName', 'programDetails', 'startPrayer', 'endPrayer']) {
       if (update[k] !== undefined) shared[k] = update[k];
     }
     const newStart = toOrgTimeParts(update.startAt).timeStr;
@@ -748,7 +758,7 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
     const timeChanged = prayerTimed || newStart !== toOrgTimeParts(before.startAt).timeStr || newEnd !== toOrgTimeParts(before.endAt).timeStr;
     const retimed = seriesTargets.map(t => {
       const times = timeChanged ? applyPrayerTimes(retimeOccurrence(t, newStart, newEnd, endNextDay), program) : { startAt: t.startAt, endAt: t.endAt };
-      return { id: t.id, startAt: times.startAt, endAt: times.endAt };
+      return { id: t.id, audience:update.audience, startAt: times.startAt, endAt: times.endAt };
     });
     const targetById = new Map(seriesTargets.map(target => [target.id, target]));
     seriesConflictChanges = retimed.map(item => {
@@ -765,6 +775,7 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
     });
     const venueSnap = await db.collection('venues').doc(update.venueId).get();
     const overlapMap = await bulkOverlaps(update.venueId, retimed, [eventId, ...retimed.map(r => r.id)], resolveBufferHours(venueSnap.exists ? venueSnap.data() : null));
+    if([...overlapMap.details.values()].flat().some(o=>o.reason!=='Existing booking at this venue'))throw new HttpsError('failed-precondition','A series occurrence conflicts with the venue availability policy.');
     let batch = db.batch();
     let ops = 0;
     for (const r of retimed) {
@@ -832,7 +843,7 @@ async function expandSeries(data) {
   const refs = occurrences.map(() => db.collection('events').doc());
   const overlapMap = await bulkOverlaps(
     data.venueId,
-    occurrences.map((o, i) => ({ id: refs[i].id, startAt: o.startAt, endAt: o.endAt })),
+    occurrences.map((o, i) => ({ id: refs[i].id, audience:normalizeAudience(data.audience), startAt: o.startAt, endAt: o.endAt })),
     [], resolveBufferHours(venue)
   );
   return { venue, department, occurrences, refs, overlapMap };
@@ -900,7 +911,7 @@ exports.createRecurringBooking = onCall({ cors: true, secrets: emailSecrets }, a
   const conflictChanges = occurrences.map((occurrence, index) => ({
     id: refs[index].id,
     after: {
-      venueId: data.venueId,
+      venueId: data.venueId, audience:normalizeAudience(data.audience),
       startAt: occurrence.startAt,
       endAt: occurrence.endAt,
       status,
@@ -1007,7 +1018,7 @@ exports.deleteBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
 // â”€â”€ Callable: live slot conflict check (public-safe) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Public callers get only { hasConflict, count }; admins also get the conflicting bookings.
 exports.checkSlotConflicts = onCall({ cors: true }, async (request) => {
-  const { venueId, startAt, endAt, excludeId } = request.data || {};
+  const { venueId, startAt, endAt, excludeId, audience } = request.data || {};
   if (!venueId || typeof venueId !== 'string' || !startAt || !endAt) {
     throw new HttpsError('invalid-argument', 'venueId, startAt and endAt are required.');
   }
@@ -1017,11 +1028,21 @@ exports.checkSlotConflicts = onCall({ cors: true }, async (request) => {
   const venueSnap = await db.collection('venues').doc(venueId).get();
   if (!venueSnap.exists) throw new HttpsError('not-found', 'Venue not found.');
   const isAdmin = await isSubmitterAdmin(request.auth);
-  const overlaps = await findOverlaps(venueId, new Date(s).toISOString(), new Date(e).toISOString(), isAdmin ? excludeId : null, undefined, resolveBufferHours(venueSnap.data()));
+  const overlaps = await findOverlaps(venueId, new Date(s).toISOString(), new Date(e).toISOString(), isAdmin ? excludeId : null, undefined, resolveBufferHours(venueSnap.data()), undefined, normalizeAudience(audience));
   return buildConflictResponse(overlaps, isAdmin);
 });
 
 // â”€â”€ Callable: admin recompute of every stored conflict flag â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+async function readVenueAvailability(date,audience){
+ let range;try{range=publicQuery.civilDayRange(date);audience=normalizeAudience(audience);}catch(e){throw new HttpsError('invalid-argument',e.message);}
+ const snap=await db.collection('venues').limit(MAX_VENUES_FOR_CONFLICTS+1).get();
+ const venues=snap.docs.map(d=>({id:d.id,...d.data()}));
+ if(!venues.length)return {date,audience,venues:[]};
+ const {events}=await loadConflictScope(venues[0].id,undefined,range.from,range.to,0,venues);
+ return {date,audience,venues:require('./venueAvailability').venueAvailability(venues,events,audience,range)};
+}
+exports.getVenueAvailability=onCall({cors:true},async request=>readVenueAvailability(request.data?.date,request.data?.audience));
+
 exports.recomputeAllConflicts = onCall({ cors: true }, async (request) => {
   const admin = await requireAdmin(request.auth);
   const venues = await db.collection('venues').get();
@@ -1418,6 +1439,7 @@ app.patch('/v1/events/:id/status', async (req, res) => {
   let hasConflict = before.hasConflict, conflictWith = before.conflictWith || [];
   if (status === 'confirmed') {
     const overlaps = await findOverlaps(before.venueId, before.startAt, before.endAt, req.params.id);
+    if(overlaps.some(o=>o.reason!=='Existing booking at this venue'))return res.status(409).json({error:'This booking conflicts with the venue availability policy.'});
     hasConflict = overlaps.length > 0; conflictWith = overlaps.map(o => o.id);
   }
   const patch = {
@@ -1434,28 +1456,9 @@ app.patch('/v1/events/:id/status', async (req, res) => {
 
 // Note: this reports raw (unbuffered) booked windows for day-level display, not the
 // buffered conflict rule used by hasConflict/conflictWith above â€” see docs/API.md.
-app.get('/v1/availability', async (req, res) => {
-  const { venue, date } = req.query;
-  if (!venue || !date) return res.status(400).json({ error: 'venue and date (YYYY-MM-DD) are required.' });
-  let range;
-  try { range = publicQuery.civilDayRange(date); }
-  catch (error) { return res.status(400).json({ error: error.message }); }
-  const snap = await db.collection('events')
-    .where('venueId', '==', venue)
-    .where('status', 'in', ACTIVE_FOR_CONFLICTS)
-    .where('startAt', '<', range.to)
-    .where('endAt', '>', range.from)
-    .orderBy('startAt').orderBy('endAt')
-    .orderBy(FieldPath.documentId())
-    .limit(MAX_CONFLICT_CANDIDATES + 1)
-    .get();
-  if (snap.size > MAX_CONFLICT_CANDIDATES) {
-    return res.status(503).json({ error: 'Too many bookings fall in this availability window. Please retry later.' });
-  }
-  const busy = snap.docs
-    .map(d => d.data())
-    .map(e => ({ start: e.startAt, end: e.endAt, status: e.status }));
-  res.json({ venue, date, busy });
+app.get('/v1/availability', async (req,res)=>{
+ try{const result=await readVenueAvailability(req.query.date,req.query.audience);const entry=result.venues.find(v=>v.venueId===req.query.venue);if(!entry)return res.status(404).json({error:'Venue not found'});res.json({venue:entry.venueId,date:result.date,audience:result.audience,restriction:entry.restriction,busy:entry.busy});}
+ catch(error){res.status(error.code==='invalid-argument'?400:503).json({error:error.code==='invalid-argument'?error.message:'Availability could not be checked. Please retry.'});}
 });
 
 function mapHttpsErrorCode(code) {

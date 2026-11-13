@@ -91,19 +91,15 @@ function computeConflictMap(events, bufferHours) {
  * using its own venue's buffer. Returns Map<id, string[]> over active (pending/confirmed) bookings.
  */
 function computeAllConflicts(events, venues) {
-  const vById = new Map(venues.map(v => [v.id, v]));
-  const active = events
-    .filter(e => e.venueId && e.startAt && e.endAt && (e.status === 'pending' || e.status === 'confirmed'))
-    .map(e => ({ id: e.id, venueId: e.venueId, startAt: e.startAt, endAt: e.endAt, _buf: resolveBufferHours(vById.get(e.venueId)) }));
-  const whole = active.filter(e => isWholeSiteVenue(vById.get(e.venueId)));
-  const result = new Map(active.map(e => [e.id, new Set()]));
-  const merge = (m) => { for (const [k, arr] of m) for (const x of arr) result.get(k).add(x); };
-  for (const vid of new Set(active.map(e => e.venueId))) {
-    if (isWholeSiteVenue(vById.get(vid))) continue;
-    merge(computeConflictMap([...active.filter(e => e.venueId === vid), ...whole], 0));
-  }
-  merge(computeConflictMap(whole, 0));
-  return new Map([...result].map(([k, s]) => [k, [...s]]));
+ const vById=new Map(venues.map(v=>[v.id,v]));
+ const active=events.filter(e=>e.venueId&&e.startAt&&e.endAt&&['pending','confirmed'].includes(e.status)).map(e=>({...e,_buf:resolveBufferHours(vById.get(e.venueId))})).sort((a,b)=>Date.parse(a.startAt)-Date.parse(b.startAt));
+ const out=new Map(active.map(e=>[e.id,[]]));
+ for(let i=0;i<active.length;i++)for(let j=i+1;j<active.length;j++){
+  const a=active[i],b=active[j];
+  if(Date.parse(b.startAt)>=Date.parse(a.endAt)+Math.max(0,a._buf)*3600000)break;
+  if(require('./venuePolicy').venueConflictReason(a,b,vById.get(a.venueId),vById.get(b.venueId))&&rangesConflict(a,b,0)){out.get(a.id).push(b.id);out.get(b.id).push(a.id);}
+ }
+ return out;
 }
 
 module.exports = { isWholeSiteVenue, computeAllConflicts, resolveBufferHours, rangesOverlap, rangesOverlapBuffered, rangesConflict, computeConflictMap };

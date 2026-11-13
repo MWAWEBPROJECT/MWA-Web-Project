@@ -1,3 +1,5 @@
+import {getVenueAvailability} from '../services/eventsService.js';
+import {AUDIENCES} from '../utils/audience.js';
 import NiazPublicSponsors from '../components/NiazPublicSponsors.jsx';
 import {bookingTypeStyle,bookingTypeEdge} from '@mwa/appearance';
 import { withLiveConflicts } from '../utils/conflictUtils.js';
@@ -45,6 +47,10 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
   const [view, setView] = useState('month'); // 'month' | 'week' | 'day'
   const todayInit = dateKeyInOrgTz(new Date().toISOString());
   const [selectedKey, setSelectedKey] = useState(todayInit);
+  const [availabilityAudience,setAvailabilityAudience]=useState('family');
+  const [availability,setAvailability]=useState({loading:true,venues:[]});
+  useEffect(()=>{let current=true;setAvailability({loading:true,venues:[]});getVenueAvailability(selectedKey,availabilityAudience).then(data=>{if(current)setAvailability({...data,loading:false});}).catch(()=>{if(current)setAvailability({error:true,venues:[]});});return()=>{current=false;};},[selectedKey,availabilityAudience,rawEvents]);
+
 
   useEffect(() => {
     setDeptFilter(prev => {
@@ -340,12 +346,15 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
           </section>
           <section className="agenda-section">
             <div className="section-eyebrow"><MapPin size={12} />Venue availability</div>
+            <label htmlFor="availability-audience">Availability for</label><select id="availability-audience" value={availabilityAudience} onChange={e=>setAvailabilityAudience(e.target.value)}>{Object.entries(AUDIENCES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
+            <p className="muted">For {selectedKey}. Restricted periods include venue buffers. Select booking times for a final check.</p>
             <div className="venue-info">
               {venues.length === 0 ? <p>No venues have been set up yet.</p> : (
                 <ul>
                   {venues.map(v => {
-                    const n = (byDay.get(selectedKey) || []).filter(e => e.venueId === v.id).length;
-                    return <li key={v.id}><strong>{venueOpen(v)}</strong><small>{n ? `${n} booking${n === 1 ? '' : 's'} on this day` : 'Available on this day'}{v.bufferHours ? ` · ${v.bufferHours}h buffer` : ''}</small></li>;
+                    const item=availability.venues.find(item=>item.venueId===v.id);
+                    const message=availability.loading?'Checking availability…':availability.error||!item?'Availability could not be checked':item.restriction|| (item.busy.length?'Restricted during the periods below':'No restrictions found on this day');
+                    return <li key={v.id}><strong>{venueOpen(v)}</strong><small>{message}{v.bufferHours ? ` · ${v.bufferHours}h buffer` : ''}</small>{!item?.restriction&&item?.busy.map((b,i)=><small key={i}>{dateKeyInOrgTz(b.start)===selectedKey?timeKeyInOrgTz(b.start):'00:00'} – {dateKeyInOrgTz(b.end)===selectedKey?timeKeyInOrgTz(b.end):'24:00'} · {b.reason}</small>)}</li>;
                   })}
                 </ul>
               )}

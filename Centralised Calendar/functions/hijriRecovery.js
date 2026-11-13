@@ -124,7 +124,7 @@ function createHijriRecovery(deps){
     if(!active(event))continue;
     const venue=byId.get(event.venueId);
     if(!venue)throw new HttpsError('not-found','A venue required for conflict recovery is unavailable.');
-    const overlaps=await findOverlaps(event.venueId,event.startAt,event.endAt,task.eventId,tx,resolveBufferHours(venue),venues);
+    const overlaps=await findOverlaps(event.venueId,event.startAt,event.endAt,task.eventId,tx,resolveBufferHours(venue),venues,event.audience);
     for(const overlap of overlaps)neighbors.add(overlap.id);
     if(event===after)afterLinks=overlaps.map(item=>item.id).sort();
    }

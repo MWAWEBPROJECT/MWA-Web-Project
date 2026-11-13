@@ -43,7 +43,7 @@ export async function buildTemplateWorkbook({ departments = [], venues = [], dat
   const names = (list) => list.filter(x => x.active !== false).map(x => String(x.name || '').trim()).filter(Boolean).sort((a, b) => a.localeCompare(b));
   const dNames = names(departments); const vNames = names(venues);
 
-  const widths = [8, 30, 18, 18, 12, 12, 11, 8, 12, 11, 11, 8, 12, 11, 14, 14, 12, 12, 20, 30, 18, 22, 16, 30];
+  const widths = [8, 30, 18, 18, 12, 12, 11, 8, 12, 11, 11, 8, 12, 11, 14, 14, 12, 12, 20, 30, 18, 22, 16, 30, 18];
   const lists=[['Booking Types','Venues']];
   for(let i=0;i<Math.max(dNames.length,vNames.length);i++)lists.push([dNames[i]||null,vNames[i]||null]);
   return buildImportTemplateWorkbook({sheetName:'Bookings',headers:EXPORT_HEADERS.slice(0,TEMPLATE_COLUMN_COUNT),dataRows,widths:widths.slice(0,TEMPLATE_COLUMN_COUNT),instructions:IMPORT_INSTRUCTIONS,lists,validations:templateValidations(dNames.length,vNames.length),lastRow:TEMPLATE_LAST_ROW,textColumns:[EXPORT_HEADERS.indexOf('Date')+1]});

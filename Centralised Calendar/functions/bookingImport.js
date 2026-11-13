@@ -1,3 +1,5 @@
+const {normalizeAudience,AUDIENCES}=require('./audience');
+const {audienceError}=require('./venuePolicy');
 // Pure validation/normalisation for the admin Excel (.xlsx) booking import.
 // The workbook is parsed in the (admin-only) browser into plain row objects; this module
 // validates them server-side so the rules cannot be bypassed by a modified client.
@@ -12,7 +14,7 @@ const VISIBILITIES = ['public', 'private'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const HEADER_ALIASES = {
-  id: 'id', title: 'title', department: 'department', bookingtype: 'department', venue: 'venue',
+  audience:'audience', programmeaudience:'audience', id: 'id', title: 'title', department: 'department', bookingtype: 'department', venue: 'venue',
   date: 'date', datebasis: 'dateBasis', basis: 'dateBasis', start: 'start', starttime: 'start', end: 'end', endtime: 'end',
   starttype: 'startType', startprayer: 'startPrayer', startoffset: 'startOffset', startoffsetmins: 'startOffset',
   endtype: 'endType', endprayer: 'endPrayer', endoffset: 'endOffset', endoffsetmins: 'endOffset',
@@ -223,6 +225,9 @@ function validateImportRows(rawRows, ctx) {
     }
 
     const id = cleanText(r.id, 40);
+    let audience;
+    try{const raw=cleanText(r.audience,40);const value=Object.entries(AUDIENCES).find(([key,label])=>key===raw.toLowerCase()||label.toLowerCase()===raw.toLowerCase())?.[0]||raw||ctx.existingById[id]?.audience;audience=normalizeAudience(value);const invalid=audienceError(venue,audience);if(invalid)problems.push(invalid);}catch(error){problems.push(error.message);}
+
     if (id && !/^[A-Za-z0-9_-]{1,40}$/.test(id)) problems.push('Id may only contain letters, numbers, - and _.');
     if (id && seenIds.has(id)) problems.push(`Id "${id}" appears more than once in the file.`);
 
@@ -250,7 +255,7 @@ function validateImportRows(rawRows, ctx) {
       row: rowNumber, action, warnings,
       id: action === 'update' ? id : null,
       data: {
-        title, departmentId: dept.id, departmentName: dept.name,
+        title, audience, departmentId: dept.id, departmentName: dept.name,
         venueId: venue.id, venueName: venue.name,
         startAt, endAt, status, visibility,
         dateBasis: dateBasis || 'gregorian', hijriDate,

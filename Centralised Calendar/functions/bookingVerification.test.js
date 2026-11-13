@@ -103,3 +103,10 @@ test('authenticated bypass requires a verified non-anonymous server identity',()
  assert.equal(valid({uid:'volunteer',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}}),true);
  assert.equal(valid({uid:'x',token:{phone_number:'+61412345678',firebase:{sign_in_provider:'phone'}}}),true);
 });
+
+test('audience defaults to family, persists each choice and binds the verification digest',()=>{
+ const base=V.canonicalBookingPayload(booking);assert.equal(base.audience,'family');
+ for(const audience of ['family','gents','ladies','kids'])assert.equal(V.canonicalBookingPayload({...booking,audience}).audience,audience);
+ assert.notEqual(V.payloadDigest(base),V.payloadDigest(V.canonicalBookingPayload({...booking,audience:'ladies'})));
+ for(const audience of ['mixed','admin',{},42])assert.throws(()=>V.canonicalBookingPayload({...booking,audience}));
+});

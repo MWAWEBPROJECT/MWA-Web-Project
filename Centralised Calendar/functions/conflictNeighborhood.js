@@ -32,7 +32,7 @@ function createConflictNeighborhoodRefresher({
         if (!active(event)) continue;
         const overlap = await findOverlaps(
           event.venueId, event.startAt, event.endAt, change.id, undefined,
-          resolveBufferHours(venueById.get(event.venueId)), venues
+          resolveBufferHours(venueById.get(event.venueId)), venues, event.audience
         );
         overlap.forEach(item => neighbors.add(item.id));
         if (event === change.after) nextConflicts.set(change.id, overlap.map(item => item.id).sort());
@@ -65,7 +65,7 @@ function createConflictNeighborhoodRefresher({
         if (!active(change.after)) continue;
         const left = change.after, right = { id, ...event };
         if (!venueById.has(left.venueId) || !venueById.has(right.venueId)) continue;
-        if (rangesConflict(
+        if (require('./venuePolicy').venueConflictReason(left,right,venueById.get(left.venueId),venueById.get(right.venueId)) && rangesConflict(
           { startAt: left.startAt, endAt: left.endAt, _buf: resolveBufferHours(venueById.get(left.venueId)) },
           { startAt: right.startAt, endAt: right.endAt, _buf: resolveBufferHours(venueById.get(right.venueId)) },
           0
