@@ -31,6 +31,6 @@ export default function FloatingLauncher({buttonRef,open,onOpen,preference,onPre
  function activate(event){if(suppressClick.current&&event.detail!==0){suppressClick.current=false;return;}if(preference.collapsed)onPreference(current=>({...current,collapsed:false}));else onOpen();}
  return <div ref={root} className={'mwa-ai-dock'+(preference.collapsed?' is-collapsed':'')+(dragging?' is-dragging':'')} style={bounds?{left:12+bounds.width*preference.x,top:12+bounds.height*preference.y,right:'auto',bottom:'auto'}:undefined}>
  <button ref={buttonRef} className="mwa-ai-launcher" aria-label={preference.collapsed?'Expand MWA Khadim':'Ask MWA Khadim for help'} aria-haspopup="dialog" aria-expanded={open} title="Hold to collapse and move. Tap the icon to expand, then tap again to chat. Alt + arrow keys also move the helper." onContextMenu={event=>event.preventDefault()} onPointerDown={down} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} onKeyDown={keyboard} onClick={activate}>
- <span className="mwa-ai-avatar"><img src="/images/mwa-ai-helper.jpg" alt="" draggable="false"/></span>{!preference.collapsed&&children}</button>
+ <span className="mwa-ai-avatar"><img data-cms-photo="photo_khadim" src="/images/mwa-ai-helper.jpg" alt="" draggable="false"/></span>{!preference.collapsed&&children}</button>
  </div>;
 }

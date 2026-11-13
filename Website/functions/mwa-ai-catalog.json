@@ -121,28 +121,28 @@
   {
     "id": "counselling",
     "title": "Counselling",
-    "href": "/#services",
+    "href": "/services/counselling/",
     "description": "Find community counselling contacts.",
     "public": true
   },
   {
     "id": "support",
     "title": "Community support",
-    "href": "/#services",
+    "href": "/services/community-support/",
     "description": "Find help and community assistance.",
     "public": true
   },
   {
     "id": "cemetery",
     "title": "Cemetery services",
-    "href": "/#services",
+    "href": "/services/cemetery-services/",
     "description": "Find cemetery service guidance and contacts.",
     "public": true
   },
   {
     "id": "aalim",
     "title": "Resident Aalim",
-    "href": "/#services",
+    "href": "/services/resident-aalim/",
     "description": "Contact MWA for religious guidance; the assistant does not issue rulings.",
     "public": true
   },

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "counselling",
+    "title": "Counselling",
+    "eyebrow": "Here to listen",
+    "intro": "Support starts with a conversation.",
+    "body": "MWA offers counselling to its community members.",
+    "section_title": "Connect with the team",
+    "section_body": "Use Make an enquiry to contact MWA about counselling and discuss the support you are looking for.",
+    "contact_title": "Counselling enquiries",
+    "contact_body": "Contact the MWA team to find out more.",
+    "email": "info@muhammadiwelfare.org.au",
+    "phone": "",
+    "photo": "",
+    "photo_alt": "Counselling at MWA"
+  },
+  {
+    "id": "community-support",
+    "title": "Community support",
+    "eyebrow": "Care within our community",
+    "intro": "Helping community members who are facing difficulty obtaining basic necessities.",
+    "body": "MWA’s community support initiative invites members who are unable to obtain basic necessities to contact Maulana Shoaib Naqvi for a private and confidential discussion. Members can also email the Treasurer with their full name and contact number.",
+    "section_title": "A community support initiative",
+    "section_body": "The initiative began in response to difficulties experienced during the COVID-19 pandemic. MWA, together with Maulana Shoaib, aims to ease difficulties while keeping discussions confidential.\n\nIf you would like to contribute, or know someone in the community who needs assistance, please get in touch.",
+    "contact_title": "Speak with MWA",
+    "contact_body": "Maulana Shoaib Naqvi\nFor email enquiries, include your full name and contact number.",
+    "email": "treasurer@muhammadiwelfare.org.au",
+    "phone": "0469 297 228",
+    "photo": "",
+    "photo_alt": "Community support at MWA"
+  },
+  {
+    "id": "cemetery-services",
+    "title": "Cemetery services",
+    "eyebrow": "Support with care and dignity",
+    "intro": "Information about graves at Kemps Creek Cemetery, close to the MWA centre.",
+    "body": "MWA has reserved two rows of graves in the Muslim section of Kemps Creek Cemetery, approximately five minutes from the Imambargah.",
+    "section_title": "Graves and payment information",
+    "section_body": "Single depth grave — $4,500 including GST, headstone and inscription. Effective 31 March 2026. No instalment plan.\n\nDouble depth grave — $6,500 including GST, headstone and inscription. Published direct-debit plan: 20% deposit ($1,300), then $144 per month for 36 months, debited on the 20th.\n\nInterment fee — $2,200 including GST for single or double depth.\n\nProvide identification and complete the lawn grave application and, where applicable, instalment form. Payments go directly to Kemps Creek Cemetery, not to MWA. Confirm current availability and the payment schedule with the contacts below.",
+    "contact_title": "Information and application forms",
+    "contact_body": "Iqtedar Ali Sundhu\niqtedar.alisundhu@gmail.com\n0409 217 927\n\nSyed Talib Raza\nsyedtalib.raza110@gmail.com\n0469 782 261",
+    "email": "",
+    "phone": "",
+    "photo": "",
+    "photo_alt": "Cemetery service information"
+  },
+  {
+    "id": "resident-aalim",
+    "title": "Resident Aalim",
+    "eyebrow": "Religious guidance and community",
+    "intro": "Moulana Syed Shoaib Naqvi",
+    "body": "Moulana Shoaib Naqvi joined Muhammadi Welfare Association in 2013 as Resident Aalim. He organises and leads religious and administrative affairs at the MWA Community Centre.",
+    "section_title": "Guidance and connection",
+    "section_body": "He has guided MWA management in religious matters and helped coordinate interfaith sessions and seminars on harmonious coexistence, representing MWA and the wider Islamic community.",
+    "contact_title": "Religious guidance enquiries",
+    "contact_body": "Contact MWA to connect with the Resident Aalim.",
+    "email": "info@muhammadiwelfare.org.au",
+    "phone": "",
+    "photo": "/images/services/resident-aalim.jpg",
+    "photo_alt": "Moulana Syed Shoaib Naqvi"
+  }
+]

@@ -1,3 +1,5 @@
+import './cms-media.js';
+import './service-pages.js';
 import './mwa-assistant-mount.jsx';
 import './YouTubePanel.jsx';
 import {normaliseTextSize,applyTextSize} from '../shared/text-size.js';

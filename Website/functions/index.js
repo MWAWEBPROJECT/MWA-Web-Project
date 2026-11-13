@@ -20,6 +20,7 @@ exports.websiteCmsApi=onRequest({region:'australia-southeast1',maxInstances:3,se
  try{
   if(/^\/api\/form-insights(?:\/|$)/.test(req.path))return require('./form-insights').handle(req,res,{db,getAuth,origins});
   if(/^\/api\/insights-detail(?:\/|$)/.test(req.path))return require('./insights-detail-api').handle(req,res,{db,getAuth,origins});
+  if(/^\/api\/site-images(?:\/|$)/.test(req.path)){try{return await require('./site-images').handle(req,res,{db,editorFor,origins});}catch(e){return res.status(e.status||503).json({error:e.status?e.message:'Photograph storage is temporarily unavailable.'});}}
   if(req.path==='/api/youtube-feed'&&req.method==='GET')return require('./youtube-feed').serve(db,res);
   if(/^\/api\/registrations(?:\/|$)/.test(req.path))return require('./registrations-api').handle(req,res,{db,getAuth,origins});
   if(/^\/api\/niaz(?:\/|$)/.test(req.path))return require('./niaz-api').handle(req,res,{db,getAuth,origins});
@@ -41,7 +42,8 @@ exports.websiteCmsApi=onRequest({region:'australia-southeast1',maxInstances:3,se
   const editor=await editorFor(req);if(!editor)return res.status(401).json({error:'Sign in with an approved MWA admin account.'});
   if(!req.is('application/json'))return res.status(415).json({error:'Use a JSON content document.'});
   const input=req.body;if(!input||!Number.isSafeInteger(input.revision)||input.revision<0)return res.status(400).json({error:'A valid content revision is required.'});
-  const document=validateContent(input.document);if(!document)return res.status(400).json({error:'Check the content fields, logo and colour settings.'});
+  const previousContent=await ref.get();
+  const document=validateContent({...input.document,content:{...(previousContent.exists?previousContent.data().document?.content:{}),...input.document?.content}});if(!document)return res.status(400).json({error:'Check the content fields, logo and colour settings.'});
   const timestamp=new Date().toISOString();let revision;
   try{revision=await db.runTransaction(async transaction=>{const current=await transaction.get(ref);const existing=current.exists?current.data().revision:0;if(existing!==input.revision)throw Object.assign(new Error('revision-conflict'),{conflict:true});const next=existing+1;transaction.set(ref,{document,revision:next,updatedAt:timestamp,updatedBy:editor.uid});transaction.set(db.doc('calendarSettings/websiteAppearance'),{palette:document.palette,mode:document.mode,customPrimary:document.customPrimary,useCustomPrimary:document.useCustomPrimary,logo:document.logo,websiteUrl:'https://mwa-community-web.web.app',revision:next,updatedAt:timestamp});
 const previous=current.exists?current.data().document:model.defaults;
