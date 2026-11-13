@@ -90,6 +90,6 @@ exports.registrationInsightsFormCatalog=firestore.onDocumentWritten({document:'r
 
 // MWA.ai is a read-only website guide. Explicit activation and model configuration required.
 exports.mwaAiChat=require('firebase-functions/v2/https').onCall({region:'australia-southeast1',serviceAccount:'178942309467-compute@developer.gserviceaccount.com',enforceAppCheck:true,maxInstances:2,concurrency:10,timeoutSeconds:40},async request=>{
- try{return await require('./mwa-ai').handle(request,{db,resolveAdmin,token:async()=>{const credentials=require('firebase-admin/app').applicationDefault();return (await credentials.getAccessToken()).access_token;}});}
- catch(error){if(error instanceof require('firebase-functions/v2/https').HttpsError)throw error;throw new (require('firebase-functions/v2/https').HttpsError)('unavailable','MWA.ai is temporarily unavailable. Please use the website menu.');}
+ try{return await require('./mwa-ai').handle(request,{db,token:async()=>{const credentials=require('firebase-admin/app').applicationDefault();return (await credentials.getAccessToken()).access_token;}});}
+ catch(error){if(error instanceof require('firebase-functions/v2/https').HttpsError)throw error;throw new (require('firebase-functions/v2/https').HttpsError)('unavailable','MWA Khadim is temporarily unavailable. Please use the website menu.');}
 });

@@ -3,476 +3,238 @@
     "id": "prayer",
     "title": "Prayer times",
     "href": "/#today-panels",
-    "description": "View today’s Fajr, Zuhr, Maghreb, sunrise and sunset. Read current times on the page; never guess them."
+    "description": "View today’s Fajr, Zuhr, Maghreb, sunrise and sunset. Read current times on the page; never guess them.",
+    "public": true
   },
   {
     "id": "book",
     "title": "Open event booking form",
     "href": "/calendar/?action=new-booking",
-    "description": "Browse the public calendar and submit an event booking. Guest contact verification and approval apply."
+    "description": "Browse the public calendar and submit an event booking. Guest contact verification and approval apply.",
+    "public": true
   },
   {
     "id": "events",
     "title": "MWA programmes",
     "href": "/#events",
-    "description": "Find MWA programmes in the community calendar. Check the page for current dates."
+    "description": "Find MWA programmes in the community calendar. Check the page for current dates.",
+    "public": true
   },
   {
     "id": "niaz",
     "title": "Open Niaz sponsorship form",
     "href": "/niaz",
-    "description": "Offer one-time or permanent sponsorship or ask the coordinator to allocate it. Public offers require approval. Sponsor a majlis or event. User chooses the programme/date in the form; never invent an event selection."
+    "description": "Offer one-time or permanent sponsorship or ask the coordinator to allocate it. Public offers require approval. Sponsor a majlis or event. User chooses the programme/date in the form; never invent an event selection.",
+    "public": true
   },
   {
     "id": "donate-niaz",
     "title": "Open Niaz donation form",
     "href": "/?donationFund=niaz#donate",
-    "description": "Donate money to the Niaz Fund. Opens the donation form with Niaz selected. User then chooses general Niaz or a specific event and enters details. This differs from offering sponsorship."
+    "description": "Donate money to the Niaz Fund. Opens the donation form with Niaz selected. User then chooses general Niaz or a specific event and enters details. This differs from offering sponsorship.",
+    "public": true
   },
   {
     "id": "donate",
     "title": "Support MWA | Donate",
     "href": "/#donate",
-    "description": "Choose one-off, recurring or both. Donation checkout is currently sandbox; do not claim real payment or tax deductibility."
+    "description": "Choose one-off, recurring or both. Donation checkout is currently sandbox; do not claim real payment or tax deductibility.",
+    "public": true
   },
   {
     "id": "services",
     "title": "Community services",
     "href": "/#services",
-    "description": "Find community support, counselling, cemetery services and religious guidance contacts."
+    "description": "Find community support, counselling, cemetery services and religious guidance contacts.",
+    "public": true
   },
   {
     "id": "school",
     "title": "MWA Saturday School",
     "href": "/#school",
-    "description": "Find Saturday School information and enquiries. For MWA Tutoring use the tutoring destination."
+    "description": "Find Saturday School information and enquiries. For MWA Tutoring use the tutoring destination.",
+    "public": true
   },
   {
     "id": "resources",
     "title": "Resources & documents",
     "href": "/#resources",
-    "description": "Find the Constitution, Will Form, Code of Conduct and governance documents. Do not claim to have read documents."
+    "description": "Find the Constitution, Will Form, Code of Conduct and governance documents. Do not claim to have read documents.",
+    "public": true
   },
   {
     "id": "gallery",
     "title": "MWA Gallery",
     "href": "/#gallery",
-    "description": "Browse the gallery."
+    "description": "Browse the gallery.",
+    "public": true
   },
   {
     "id": "contact",
     "title": "Contact MWA",
     "href": "/#contact",
-    "description": "Send an enquiry to the approved admin team."
+    "description": "Send an enquiry to the approved admin team.",
+    "public": true
   },
   {
     "id": "membership",
-    "title": "Member login & membership",
-    "href": "/member-login",
-    "description": "Membership portal is currently a concept; use Contact MWA for membership enquiries."
-  },
-  {
-    "id": "login",
-    "title": "Admin sign-in",
-    "href": "/admin-login",
-    "description": "Sign in to the Admin Console. Access is assigned by the Super Admin."
+    "title": "Membership enquiries",
+    "href": "/#contact",
+    "description": "Contact MWA for public membership information. No access to member accounts or records.",
+    "public": true
   },
   {
     "id": "forms",
     "title": "Community registrations",
     "href": "/registrations/",
-    "description": "Browse available public registration forms."
+    "description": "Browse available public registration forms.",
+    "public": true
   },
   {
     "id": "islamic",
     "title": "Key Islamic dates",
     "href": "/islamic-events/",
-    "description": "View key Islamic dates from the shared calendar."
-  },
-  {
-    "id": "events-admin",
-    "title": "Manage events & bookings",
-    "href": "/calendar/?view=admin",
-    "description": "Manage event bookings, pending requests, venues, booking types, recurrence, calendar PDF templates and imports/exports. Module controls enforce role and conflict rules.",
-    "modules": [
-      "events-bookings"
-    ]
-  },
-  {
-    "id": "enquiries-admin",
-    "title": "Contact & Enquiries",
-    "href": "/enquiries/",
-    "description": "Review contact request threads, respond, resolve/spam and manage the connected mailbox within the authorised dashboard.",
-    "modules": [
-      "enquiries"
-    ]
-  },
-  {
-    "id": "dates-admin",
-    "title": "Calendar Management",
-    "href": "/calendar-management/",
-    "description": "Open this assigned admin module; records are not available in chat.",
-    "modules": [
-      "calendar-management"
-    ]
-  },
-  {
-    "id": "niaz-admin",
-    "title": "Niaz Administration",
-    "href": "/admin-login?module=niaz",
-    "description": "Open this assigned admin module; records are not available in chat.",
-    "modules": [
-      "niaz",
-      "niaz-read",
-      "niaz-finance"
-    ]
-  },
-  {
-    "id": "tools-admin",
-    "title": "Tools & Automation",
-    "href": "/tools-automation/",
-    "description": "Open this assigned admin module; records are not available in chat.",
-    "modules": [
-      "tools-automation"
-    ]
-  },
-  {
-    "id": "donations-admin",
-    "title": "Donation Administration",
-    "href": "/admin-login?module=donations",
-    "description": "View latest received sandbox donations, search by name/email/mobile/reference, filter by date/fund/status, export Excel/PDF and manage recurring donations. Requires Donation Administration access. View records inside the module, never in chat.",
-    "modules": [
-      "donations"
-    ]
-  },
-  {
-    "id": "cms-admin",
-    "title": "Website CMS",
-    "href": "/cms",
-    "description": "Edit and publish static website content, branding, images and appearance through CMS controls.",
-    "modules": [
-      "website-cms"
-    ]
-  },
-  {
-    "id": "forms-admin",
-    "title": "Form Builder",
-    "href": "/admin-login?module=form-builder",
-    "description": "Build forms, review event responses, filter/export authorised responses and manage assigned event viewers. Insights is a separately permissioned module.",
-    "modules": [
-      "form-builder"
-    ]
-  },
-  {
-    "id": "insights-admin",
-    "title": "Form Insights",
-    "href": "/admin-login?module=form-insights",
-    "description": "Open this assigned admin module; records are not available in chat.",
-    "modules": [
-      "form-insights"
-    ]
+    "description": "View key Islamic dates from the shared calendar.",
+    "public": true
   },
   {
     "id": "home",
     "title": "MWA home",
     "href": "/",
-    "description": "Return to the first website view."
+    "description": "Return to the first website view.",
+    "public": true
   },
   {
     "id": "appearance",
     "title": "Colours, dark mode & text size",
     "href": "/?appearance=open",
-    "description": "Open Appearance to choose a colour palette, light/dark/system mode and supported text size."
+    "description": "Open Appearance to choose a colour palette, light/dark/system mode and supported text size.",
+    "public": true
   },
   {
     "id": "youtube",
     "title": "YouTube & community updates",
     "href": "/#community-news",
-    "description": "Watch recent MWA videos within the website, use fullscreen or open YouTube. See the panel for latest posts."
+    "description": "Watch recent MWA videos within the website, use fullscreen or open YouTube. See the panel for latest posts.",
+    "public": true
   },
   {
     "id": "counselling",
     "title": "Counselling",
     "href": "/#services",
-    "description": "Find community counselling contacts."
+    "description": "Find community counselling contacts.",
+    "public": true
   },
   {
     "id": "support",
     "title": "Community support",
     "href": "/#services",
-    "description": "Find help and community assistance."
+    "description": "Find help and community assistance.",
+    "public": true
   },
   {
     "id": "cemetery",
     "title": "Cemetery services",
     "href": "/#services",
-    "description": "Find cemetery service guidance and contacts."
+    "description": "Find cemetery service guidance and contacts.",
+    "public": true
   },
   {
     "id": "aalim",
     "title": "Resident Aalim",
     "href": "/#services",
-    "description": "Contact MWA for religious guidance; the assistant does not issue rulings."
+    "description": "Contact MWA for religious guidance; the assistant does not issue rulings.",
+    "public": true
   },
   {
     "id": "tutoring",
     "title": "MWA Tutoring",
     "href": "/#tutoring",
-    "description": "Open the MWA Tutoring panel directly for tutoring information and enquiries. Separate from Saturday School."
+    "description": "Open the MWA Tutoring panel directly for tutoring information and enquiries. Separate from Saturday School.",
+    "public": true
   },
   {
     "id": "volunteer",
     "title": "Volunteer with MWA",
     "href": "/#contact",
-    "description": "Open Contact MWA and choose Volunteering for an enquiry. The future Volunteer Administration module is not live."
+    "description": "Contact MWA about public volunteering opportunities.",
+    "public": true
   },
   {
     "id": "constitution",
     "title": "MWA Constitution",
     "href": "/#resources",
-    "description": "Open Resources and choose MWA Constitution. The assistant does not read or interpret the document contents."
+    "description": "Open Resources and choose MWA Constitution. The assistant does not read or interpret the document contents.",
+    "public": true
   },
   {
     "id": "will-form",
     "title": "Will Form",
     "href": "/#resources",
-    "description": "Open Resources and choose Will Form. The assistant does not read or interpret the document contents."
+    "description": "Open Resources and choose Will Form. The assistant does not read or interpret the document contents.",
+    "public": true
   },
   {
     "id": "conduct",
     "title": "Code of Conduct for Members",
     "href": "/#resources",
-    "description": "Open Resources and choose Code of Conduct for Members. The assistant does not read or interpret the document contents."
+    "description": "Open Resources and choose Code of Conduct for Members. The assistant does not read or interpret the document contents.",
+    "public": true
   },
   {
     "id": "youth-framework",
     "title": "MWAYG Governance Framework",
     "href": "/#resources",
-    "description": "Open Resources and choose MWAYG Governance Framework. The assistant does not read or interpret the document contents."
+    "description": "Open Resources and choose MWAYG Governance Framework. The assistant does not read or interpret the document contents.",
+    "public": true
   },
   {
     "id": "donate-general",
     "title": "Open General Donation form",
     "href": "/?donationFund=general#donate",
-    "description": "Open the donation form with General Donation selected. User enters their own amount and required options. Checkout remains sandbox."
+    "description": "Open the donation form with General Donation selected. User enters their own amount and required options. Checkout remains sandbox.",
+    "public": true
   },
   {
     "id": "donate-313",
     "title": "Open 313 Contribution form",
     "href": "/?donationFund=313#donate",
-    "description": "Open the donation form with 313 Contribution selected. User enters their own amount and required options. Checkout remains sandbox."
+    "description": "Open the donation form with 313 Contribution selected. User enters their own amount and required options. Checkout remains sandbox.",
+    "public": true
   },
   {
     "id": "donate-youth",
     "title": "Open Youth Fund form",
     "href": "/?donationFund=youth#donate",
-    "description": "Open the donation form with Youth Fund selected. User enters their own amount and required options. Checkout remains sandbox."
+    "description": "Open the donation form with Youth Fund selected. User enters their own amount and required options. Checkout remains sandbox.",
+    "public": true
   },
   {
     "id": "donate-khums",
     "title": "Open Khums Contribution form",
     "href": "/?donationFund=khums#donate",
-    "description": "Open the donation form with Khums Contribution selected. User enters their own amount and required options. Checkout remains sandbox."
+    "description": "Open the donation form with Khums Contribution selected. User enters their own amount and required options. Checkout remains sandbox.",
+    "public": true
   },
   {
     "id": "donate-school",
     "title": "Open Donation for MWA School form",
     "href": "/?donationFund=school#donate",
-    "description": "Open the donation form with Donation for MWA School selected. User enters their own amount and required options. Checkout remains sandbox."
+    "description": "Open the donation form with Donation for MWA School selected. User enters their own amount and required options. Checkout remains sandbox.",
+    "public": true
   },
   {
     "id": "donate-fitra",
     "title": "Open Fitra form",
     "href": "/?donationFund=fitra#donate",
-    "description": "Open the donation form with Fitra selected. User enters their own amount and required options. Checkout remains sandbox."
+    "description": "Open the donation form with Fitra selected. User enters their own amount and required options. Checkout remains sandbox.",
+    "public": true
   },
   {
     "id": "recurring-donation",
     "title": "Set up recurring donations",
     "href": "/#donate",
-    "description": "Choose recurring-only or one-off plus recurring, then choose amount, frequency and first date. The assistant never opts the user into recurring payments."
-  },
-  {
-    "id": "niaz-requests",
-    "title": "Sponsorship Requests",
-    "href": "/admin-login?module=niaz&tab=eois",
-    "description": "Open Sponsorship Requests in Niaz Administration; editing/export depends on module permissions.",
-    "modules": [
-      "niaz",
-      "niaz-read",
-      "niaz-finance"
-    ]
-  },
-  {
-    "id": "niaz-monthly",
-    "title": "Monthly Programme Dashboard",
-    "href": "/admin-login?module=niaz&tab=dashboard",
-    "description": "Open Monthly Programme Dashboard in Niaz Administration; editing/export depends on module permissions.",
-    "modules": [
-      "niaz",
-      "niaz-read",
-      "niaz-finance"
-    ]
-  },
-  {
-    "id": "niaz-commitments",
-    "title": "Recurring Commitments",
-    "href": "/admin-login?module=niaz&tab=programmes",
-    "description": "Open Recurring Commitments in Niaz Administration; editing/export depends on module permissions.",
-    "modules": [
-      "niaz",
-      "niaz-read",
-      "niaz-finance"
-    ]
-  },
-  {
-    "id": "niaz-history",
-    "title": "Sponsorship History",
-    "href": "/admin-login?module=niaz&tab=assignments",
-    "description": "Open Sponsorship History in Niaz Administration; editing/export depends on module permissions.",
-    "modules": [
-      "niaz",
-      "niaz-read",
-      "niaz-finance"
-    ]
-  },
-  {
-    "id": "niaz-directory",
-    "title": "Sponsor Directory",
-    "href": "/admin-login?module=niaz&tab=sponsors",
-    "description": "Open Sponsor Directory in Niaz Administration; editing/export depends on module permissions.",
-    "modules": [
-      "niaz",
-      "niaz-read",
-      "niaz-finance"
-    ]
-  },
-  {
-    "id": "audit",
-    "title": "Audit log",
-    "href": "/tools-automation/?tab=audit",
-    "description": "Review activity with user, date and module filters.",
-    "modules": [
-      "tools-automation"
-    ]
-  },
-  {
-    "id": "team",
-    "title": "Admin team & access",
-    "href": "/tools-automation/?tab=team",
-    "description": "View the admin team. Only the Super Admin can add members or change module access/expiry.",
-    "modules": [
-      "tools-automation"
-    ]
-  },
-  {
-    "id": "hijri",
-    "title": "Monthly Hijri settings",
-    "href": "/calendar-management/",
-    "description": "Open Calendar Management and use Monthly Hijri settings.",
-    "modules": [
-      "calendar-management"
-    ]
-  },
-  {
-    "id": "niaz-notifications",
-    "title": "Niaz Notification Tools",
-    "href": "/admin-login?module=niaz&tools=notifications",
-    "description": "Review notification settings/delivery. Actual controls enforce management permissions.",
-    "requiresAll": [
-      "tools-automation"
-    ],
-    "modules": [
-      "niaz",
-      "niaz-read",
-      "niaz-finance"
-    ]
-  },
-  {
-    "id": "insights-people",
-    "title": "Respondent review",
-    "href": "/admin-login?module=insights-people",
-    "description": "Open permitted person-search/reporting views. Do not enter personal records into chat.",
-    "modules": [
-      "form-insights-people"
-    ]
-  },
-  {
-    "id": "insights-export",
-    "title": "Form Insights exports",
-    "href": "/admin-login?module=form-insights",
-    "description": "Open Form Insights to export authorised reports.",
-    "requiresAll": [
-      "form-insights"
-    ],
-    "modules": [
-      "form-insights-export"
-    ]
-  },
-  {
-    "id": "scoped-responses",
-    "title": "Assigned event responses",
-    "href": "/admin-login?module=form-builder",
-    "description": "Sign in as an assigned event response viewer. The console opens only assigned forms; it does not grant general admin access."
-  },
-  {
-    "id": "planned-volunteers",
-    "title": "Volunteer Administration",
-    "href": null,
-    "description": "Coming soon. This module is not available; do not offer to open it.",
-    "planned": true,
-    "modules": [
-      "volunteers"
-    ]
-  },
-  {
-    "id": "planned-members",
-    "title": "Member Administration",
-    "href": null,
-    "description": "Coming soon. This module is not available; do not offer to open it.",
-    "planned": true,
-    "modules": [
-      "members"
-    ]
-  },
-  {
-    "id": "planned-maintenance",
-    "title": "Maintenance Administration",
-    "href": null,
-    "description": "Coming soon. This module is not available; do not offer to open it.",
-    "planned": true,
-    "modules": [
-      "maintenance"
-    ]
-  },
-  {
-    "id": "planned-expenses",
-    "title": "Expense Administration",
-    "href": null,
-    "description": "Coming soon. This module is not available; do not offer to open it.",
-    "planned": true,
-    "modules": [
-      "expenses"
-    ]
-  },
-  {
-    "id": "planned-social-media",
-    "title": "Social Media Administration",
-    "href": null,
-    "description": "Coming soon. This module is not available; do not offer to open it.",
-    "planned": true,
-    "modules": [
-      "social-media"
-    ]
-  },
-  {
-    "id": "planned-speakers-reciters",
-    "title": "Speakers & Reciters",
-    "href": null,
-    "description": "Coming soon. This module is not available; do not offer to open it.",
-    "planned": true,
-    "modules": [
-      "speakers-reciters"
-    ]
+    "description": "Choose recurring-only or one-off plus recurring, then choose amount, frequency and first date. The assistant never opts the user into recurring payments.",
+    "public": true
   }
 ]

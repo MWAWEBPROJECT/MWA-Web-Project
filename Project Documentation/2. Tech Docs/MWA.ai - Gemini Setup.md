@@ -1,3 +1,5 @@
+> Current policy — 13 November 2026: MWA Khadim assists with all publicly available website information and public forms, for visitors and signed-in users alike. It does not offer protected-module navigation, retrieve behind-login records, or perform administrative actions. This supersedes historical admin-aware descriptions below. Public programme, Islamic-date and prayer answers use bounded read-only server lookups. App Check and operational usage counters remain. The shared runtime identity is unchanged; this is an application-enforced boundary, not separate IAM/database isolation. Users must avoid pasting private information into chat, which is sent to Gemini.
+
 # MWA.ai — Gemini setup and activation
 
 Status: deployed on 11 November 2026. User confirmed their normal browser receives an answer and an Open Niaz donation form button for the Niaz donation request. Canonical release/acceptance status is in the Codex and Copilot Handover.
