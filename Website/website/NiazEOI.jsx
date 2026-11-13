@@ -9,6 +9,7 @@ import {contactError,verificationPhone} from '@calendar/utils/contactVerificatio
 import {NIAZ_ARRANGEMENTS} from './niaz-offer.mjs';
 import './registrations.css';
 import './niaz.css';
+import '@calendar/components/admin-back.css';
 export default function NiazEOI(){
  const session=useAuth(),authenticated=!!session.user&&(session.user.emailVerified||session.user.phoneNumber);
  const [method,setMethod]=useState('email'),[contact,setContact]=useState(''),[name,setName]=useState(''),[code,setCode]=useState(''),[challenge,setChallenge]=useState(null),[proof,setProof]=useState(null),[phone,setPhone]=useState(null);
@@ -79,7 +80,7 @@ export default function NiazEOI(){
   });
  }
  return <section className="registrations-page wrap niaz-page niaz-public" aria-labelledby="niaz-eoi-title">
-  <a className="text-link niaz-back-link" href="/calendar/"><ArrowLeft size={17} aria-hidden="true"/>Events & Booking</a>
+  <a className="mwa-admin-back niaz-back-link" href="/calendar/" aria-label="Back to Events & Booking" title="Back to Events & Booking"><ArrowLeft size={20} aria-hidden="true"/></a>
   <header className="niaz-heading"><div><div className="eyebrow">MWA COMMUNITY PROGRAMMES</div><h1 id="niaz-eoi-title">Sponsor a community meal</h1>
    <p>Choose a programme and offer your support. Our Niaz Coordinator will review your request and confirm the arrangements.</p></div></header>
   <div className="niaz-message niaz-context"><Info size={19} aria-hidden="true"/><p>Choose a programme and tell us how you would like to help. Your contact stays private. We show your name on event cards only with your consent and after approval.</p></div>
