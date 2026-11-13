@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {availabilityLabel} from './availabilityLabel.js';
+const from='2026-11-16T13:00:00Z',to='2026-11-17T13:00:00Z';
+test('overnight precinct block ends at 5:55am Sydney, not a whole-day closure',()=>{assert.match(availabilityLabel({busy:[{start:'2026-11-16T08:55:00Z',end:'2026-11-16T18:55:00Z'}]},from,to),/^Available from 5:55 am$/)});
+test('empty, restricted and all-day blocked venues',()=>{assert.equal(availabilityLabel({busy:[]},from,to),'Available');assert.equal(availabilityLabel({restriction:'internal policy',busy:[]},from,to),'Not available');assert.equal(availabilityLabel({busy:[{start:from,end:to}]},from,to),'Not available')});
+test('merge overlapping blocks and display multiple free windows without reasons',()=>{const label=availabilityLabel({busy:[{start:from,end:'2026-11-16T18:00:00Z',reason:'private'},{start:'2026-11-16T17:00:00Z',end:'2026-11-16T19:00:00Z'},{start:'2026-11-17T01:00:00Z',end:'2026-11-17T03:00:00Z'}]},from,to);assert.equal(label,'Available: 6:00 am – 12:00 pm; from 2:00 pm');assert.doesNotMatch(label,/private/)});

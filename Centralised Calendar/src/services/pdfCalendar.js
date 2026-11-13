@@ -18,7 +18,7 @@ function monthGrid(ctx,sheet,theme,decorative){
 
 function monthlyItems(model,notes){
  const result=[];
- for(const row of model.rows){const hijri=row.hijri?`${row.hijri.day}${row.hijri.suffix} ${row.hijri.month}`:'Hijri date unavailable';const greg=`${row.greg.dow}, ${row.greg.day}${row.greg.suffix} ${row.greg.month}`;row.events.forEach((event,index)=>result.push({...event,id:`${row.key}-${index}`,date:model.basis==='hijri'?hijri:greg,secondary:model.basis==='hijri'?greg:hijri,title:event.pending?event.title+' (Pending)':event.title}))}
+ for(const row of model.rows)row.events.forEach((event,index)=>result.push({...event,id:`${row.key}-${index}`,hijriDate:row.hijriDate,gregorianDate:row.gregorianDate,title:event.pending?event.title+' (Pending)':event.title}));
  if(!result.length)result.push({id:'empty',note:'No events scheduled for this selection.'});
  notes.forEach((note,index)=>result.push({id:'note-'+index,note}));return result;
 }
@@ -29,7 +29,7 @@ export async function renderCalendarPdf(model,filename='MWA-Calendar.pdf',opts={
  const measurement=makeCanvas(opts);const firstHead=monthGrid(measurement.ctx,model.sheet,theme,decorative);
  const items=prepareItems(measurement.ctx,monthlyItems(model,(opts.notes||[]).map(String).map(n=>n.trim()).filter(Boolean)));
  const pages=paginateItems(items,firstHead+36);const canvases=[],audit=[];
- pages.forEach((page,index)=>{const {canvas,ctx}=index?makeCanvas(opts):measurement;startPage(ctx,theme,decorative);drawHeader(ctx,logo,theme,{kicker:index?'Monthly events calendar - continued':'Monthly events calendar',title:model.sheet.name,subtitle:model.sheet.yearLine,detail:index?`${model.eventCount} event(s) · ${text(model.footerLabel)}`:model.sheet.sub+' · '+model.eventCount+' event(s)',arabic:model.arabic},decorative);const head=index?211:monthGrid(ctx,model.sheet,theme,decorative);tableHead(ctx,theme,head,decorative,model.basis==='hijri'?'Hijri / Gregorian':'Gregorian / Hijri');drawItems(ctx,theme,page,decorative,audit);drawFooter(ctx,theme,index+1,pages.length,opts.generatedAt);canvases.push(canvas)});
+ pages.forEach((page,index)=>{const {canvas,ctx}=index?makeCanvas(opts):measurement;startPage(ctx,theme,decorative);drawHeader(ctx,logo,theme,{kicker:index?'Monthly events calendar - continued':'Monthly events calendar',title:model.sheet.name,subtitle:model.sheet.yearLine,detail:index?`${model.eventCount} event(s) · ${text(model.footerLabel)}`:model.sheet.sub+' · '+model.eventCount+' event(s)',arabic:model.arabic},decorative);const head=index?211:monthGrid(ctx,model.sheet,theme,decorative);tableHead(ctx,theme,head,decorative);drawItems(ctx,theme,page,decorative,audit);drawFooter(ctx,theme,index+1,pages.length,opts.generatedAt);canvases.push(canvas)});
  const pdf=new jsPDF({unit:'mm',format:opts.paperSize==='a3'?'a3':'a4',orientation:'portrait',compress:true});
  savePages(pdf,canvases,opts,filename,`Muhammadi Welfare Association - Monthly Events Calendar - ${text(model.footerLabel)}`);
  if(opts.returnCanvas)return canvases.map(canvas=>canvas.toDataURL('image/png'));

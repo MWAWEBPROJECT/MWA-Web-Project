@@ -1,7 +1,8 @@
+import {availabilityLabel} from '../utils/availabilityLabel.js';
 import {getVenueAvailability} from '../services/eventsService.js';
 import {AUDIENCES} from '../utils/audience.js';
 import NiazPublicSponsors from '../components/NiazPublicSponsors.jsx';
-import {bookingTypeStyle,bookingTypeEdge} from '@mwa/appearance';
+import {bookingTypeEdge} from '@mwa/appearance';
 import { withLiveConflicts } from '../utils/conflictUtils.js';
 import { useEffect, useMemo, useState } from 'react';
 import { HIJRI_MONTHS } from '../services/hijriService.js';
@@ -16,7 +17,7 @@ import {
   shiftGregorianCursor,
   shiftHijriCursor
 } from '../utils/hijriCalendarGrid.js';
-import { ChevronLeft, ChevronRight, CalendarDays, MapPin, Plus, FileDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, CalendarDays, MapPin, Plus, FileDown } from 'lucide-react';
 import PdfExportModal from '../components/PdfExportModal.jsx';
 import { getHijriParts } from '../services/hijriService.js';
 import BookingModal from '../components/BookingModal.jsx';
@@ -181,7 +182,7 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
   const pendingConflicts = isAdmin ? pendingAll.filter(e => e.hasConflict).length : 0;
   const venueOpen = (v) => `${v.name}`;
 
-  const eventStyle = e => {if(e.masked)return undefined;const style=bookingTypeStyle(departments.find(d=>d.id===e.departmentId));if(e.status==='pending'){delete style.background;delete style.color}return style};
+  const eventStyle = e => ({'--booking-outline':e.masked?'var(--muted-foreground)':deptColor(e.departmentId)});
   const eventPill = (e) => (
     <button key={e.id} type="button" className={`ev ${e.status === 'pending' ? 'pend' : ''} ${e.masked && e.status !== 'pending' ? 'priv' : ''} ${e.hasConflict ? 'conflict' : ''}`}
       style={eventStyle(e)}
@@ -257,7 +258,7 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
             <div className="dept-chips">
               {departments.map(d => (
                 <button key={d.id} type="button" className="chip" onClick={() => toggleDept(d.id)}
-                  style={bookingTypeStyle(d,deptFilter.has(d.id))} aria-pressed={deptFilter.has(d.id)}>{d.name}</button>
+                  style={{'--booking-outline':bookingTypeEdge(d)}} aria-pressed={deptFilter.has(d.id)}><span className="chip-check" aria-hidden="true">✓</span>{d.name}</button>
               ))}
             </div>
           )}
@@ -275,8 +276,8 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
               ) : (
                 <div className="day-list">
                   {selectedEvents.map(e => (
-                    <button key={e.id} type="button" className="day-item" style={{ borderLeftColor: e.masked ? '#475467' : deptColor(e.departmentId) }} onClick={() => setModal({ editing: e })}>
-                      <span className="t">{timeKeyInOrgTz(e.startAt)} – {timeKeyInOrgTz(e.endAt)}</span>
+                    <button key={e.id} type="button" className="day-item" style={eventStyle(e)} onClick={() => setModal({ editing: e })}>
+                      <span className="t">{timeKeyInOrgTz(e.startAt)}</span>
                       <span>
                         <strong>{e.title}</strong>{e.status==='confirmed'&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt}/>}
                         <small>{e.venueName || venues.find(v => v.id === e.venueId)?.name || ''} · {e.status}{e.hasConflict ? ' · overlaps another booking' : ''}</small>
@@ -318,11 +319,10 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
               </div>
             ) : (
               selectedEvents.map(e => (
-                <button key={e.id} type="button" className="agenda-item" onClick={() => setModal({ editing: e })}>
-                  <span className="bar" style={{ background: e.masked ? '#475467' : deptColor(e.departmentId) }} />
+                <button key={e.id} type="button" className="agenda-item booking-outlined" style={eventStyle(e)} onClick={() => setModal({ editing: e })}>
                   <span>
                     <strong>{e.title}</strong>{e.status==='confirmed'&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt}/>}
-                    <small>{timeKeyInOrgTz(e.startAt)} – {timeKeyInOrgTz(e.endAt)} · {e.venueName || venues.find(v => v.id === e.venueId)?.name || ''}{e.status === 'pending' ? ' · pending' : ''}</small>
+                    <small>{timeKeyInOrgTz(e.startAt)} · {e.venueName || venues.find(v => v.id === e.venueId)?.name || ''}{e.status === 'pending' ? ' · pending' : ''}</small>
                   </span>
                 </button>
               ))
@@ -338,7 +338,7 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
               </div>
             </div>
             {isAdmin && pendingAll.slice(0, 3).map(e => (
-              <button key={e.id} type="button" className="agenda-item" onClick={() => setModal({ editing: e })}>
+              <button key={e.id} type="button" className="agenda-item booking-outlined" style={eventStyle(e)} onClick={() => setModal({ editing: e })}>
                 <span className="bar" style={{ background: 'var(--amber)' }} />
                 <span><strong>{e.title}</strong>{e.status==='confirmed'&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt}/>}<small>{dateKeyInOrgTz(e.startAt)} {timeKeyInOrgTz(e.startAt)}{e.hasConflict ? ' · conflict' : ''}</small></span>
               </button>
@@ -346,14 +346,14 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
           </section>
           <section className="agenda-section">
             <div className="section-eyebrow"><MapPin size={12} />Venue availability</div>
-            <label htmlFor="availability-audience">Availability for</label><select id="availability-audience" value={availabilityAudience} onChange={e=>setAvailabilityAudience(e.target.value)}>{Object.entries(AUDIENCES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
+            <div className="availability-audience-field"><label htmlFor="availability-audience">Availability for</label><div className="availability-audience-control"><select id="availability-audience" value={availabilityAudience} onChange={e=>setAvailabilityAudience(e.target.value)}>{Object.entries(AUDIENCES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select><ChevronDown size={16} aria-hidden="true" /></div></div>
             <p className="muted">For {selectedKey}.</p>
             <div className="venue-info">
               {venues.length === 0 ? <p>No venues have been set up yet.</p> : (
                 <ul>
                   {venues.map(v => {
                     const item=availability.venues.find(item=>item.venueId===v.id);
-                    const message=availability.loading?'Checking availability…':availability.error||!item?'Availability could not be checked':item.restriction||item.busy.length?'Not available':'Available';
+                    const message=availability.loading?'Checking availability…':availability.error||!item?'Availability could not be checked':availabilityLabel(item,localToUtcIso(selectedKey,'00:00'),localToUtcIso(new Date(Date.parse(selectedKey+'T12:00:00Z')+86400000).toISOString().slice(0,10),'00:00'));
                     return <li key={v.id}><strong>{venueOpen(v)}</strong><small>{message}</small></li>;
                   })}
                 </ul>

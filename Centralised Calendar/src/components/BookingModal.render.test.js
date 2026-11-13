@@ -32,6 +32,7 @@ test('booking gate hides booking fields for visitors and opens directly for auth
  globalThis.__bookingUser={uid:'anon',emailVerified:false,isAnonymous:true};html=renderToStaticMarkup(React.createElement(BookingModalInner,props));assert.match(html,/Verify your contact/);
  const programme={id:'event_1-A',title:'Synthetic programme',startAt:'2027-01-10T23:30:00Z',endAt:'2027-01-11T01:00:00Z',departmentName:'MWA Programs',status:'confirmed',visibility:'public'};
  html=renderToStaticMarkup(React.createElement(BookingModalInner,{...props,editing:programme}));
+ assert.doesNotMatch(html,/>12:00|12:00</);
  assert.match(html,/href="\/niaz\/\?event=event_1-A&amp;date=2027-01-11" target="_top"/);
  for(const editing of [{...programme,masked:true},{...programme,status:'pending'},{...programme,departmentName:'Other'}]){
   html=renderToStaticMarkup(React.createElement(BookingModalInner,{...props,editing}));

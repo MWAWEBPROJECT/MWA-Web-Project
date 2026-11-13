@@ -1,3 +1,5 @@
+import {AUDIENCES} from '../utils/audience.js';
+import {prayerLabel} from '../utils/prayerTimes.js';
 // Pure data model for the monthly PDF calendar (no DOM/canvas) so it can be unit tested.
 import { HIJRI_MONTHS, getHijriParts } from './hijriService.js';
 import { buildGregorianMonthGrid, buildHijriMonthGrid } from '../utils/hijriCalendarGrid.js';
@@ -39,6 +41,18 @@ export function to12h(hhmm) {
 const keyToDate = key => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d); };
 
 function hijriName(month) { return PDF_HIJRI_NAMES[month]?.en || HIJRI_MONTHS.find(m => m.value === month)?.name || ''; }
+
+export function programmeDescription(event) {
+  const time=to12h(timeKeyInOrgTz(event.startAt));
+  const prayer=event.startPrayer;
+  const offset=Number(prayer?.offset)||0;
+  const start=event.allDay?'All day':prayer?.key?`${prayerLabel(prayer.key)}${offset?` ${offset>0?'+':'-'}${Math.abs(offset)} min`:''} (${time})`:time;
+  return {title:event.title||'Untitled',detail:[`Programme starts: ${start}`,AUDIENCES[event.audience||'family']||'Family Event',event.speakerName?`Speaker: ${event.speakerName}`:''].filter(Boolean).join(' · '),programDetails:event.programDetails||'',department:event.departmentName||'',departmentId:event.departmentId||null,pending:event.status==='pending'};
+}
+export function programmeDates(key,overrides=[]) {
+ const d=keyToDate(key),h=getHijriParts(key,overrides);
+ return {hijriDate:h.year?`${h.day}${ordinalSuffix(h.day)} ${hijriName(h.month)} ${h.year} AH`:'Hijri date unavailable',gregorianDate:`${DOW3[d.getDay()]}, ${d.getDate()}${ordinalSuffix(d.getDate())} ${G_MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}`};
+}
 
 /**
  * @param {object} p
@@ -102,16 +116,8 @@ export function buildPdfModel({ events, basis, year, month, hYear, hMonth, overr
       key,
       hijri: h.year ? { day: h.day, suffix: ordinalSuffix(h.day), month: hijriName(h.month) } : null,
       greg: { dow: DOW3[d.getDay()], day: d.getDate(), suffix: ordinalSuffix(d.getDate()), month: G_MONTHS[d.getMonth()].slice(0, 3) },
-      events: list.map(e => {
-        const venue = e.venueName || '';
-        return {
-          title: e.title || 'Untitled',
-          detail: `[${to12h(timeKeyInOrgTz(e.startAt))} – ${to12h(timeKeyInOrgTz(e.endAt))}${venue ? ` · ${venue}` : ''}]`,
-          department: e.departmentName || '',
-          departmentId: e.departmentId || null,
-          pending: e.status === 'pending'
-        };
-      })
+      ...programmeDates(key,overrides),
+      events: list.map(programmeDescription)
     };
   });
 
@@ -207,6 +213,7 @@ export function buildYearPdfModel({ events, basis = 'gregorian', year, hYear, ov
   const months = grids.map((grid, idx) => {
     const weeks = [];
     const entries = [];
+    const programmes = [];
     const inMonth = grid.cells.filter(c => c.inMonth);
     for (let i = 0; i < grid.cells.length; i += 7) {
       weeks.push(grid.cells.slice(i, i + 7).map(c => {
@@ -217,6 +224,7 @@ export function buildYearPdfModel({ events, basis = 'gregorian', year, hYear, ov
         const list = (byKey.get(c.key) || []).slice().sort((a, b) => a.startAt.localeCompare(b.startAt));
         for (const e of list) {
           entries.push({ day, title: e.title || 'Untitled', time: e.allDay ? '' : to12h(timeKeyInOrgTz(e.startAt)) });
+          programmes.push({...programmeDescription(e),...programmeDates(c.key,overrides),id:e.id||`${c.key}-${programmes.length}`});
           eventCount += 1;
         }
         return sheetCell(c, isHijri, list.length > 0);
@@ -227,7 +235,7 @@ export function buildYearPdfModel({ events, basis = 'gregorian', year, hYear, ov
     const sub = isHijri
       ? rangeLabel(G_MONTHS[first.date.getMonth()], G_MONTHS[last.date.getMonth()])
       : rangeLabel(hijriName(first.hijri.month), hijriName(last.hijri.month));
-    return { name: isHijri ? hijriName(idx + 1) : G_MONTHS[idx], sub, weeks: weeks.filter(w => w.some(Boolean)), list: compactYearEntries(entries), notes };
+    return { name: isHijri ? hijriName(idx + 1) : G_MONTHS[idx], sub, weeks: weeks.filter(w => w.some(Boolean)), list: compactYearEntries(entries), programmes, notes };
   });
 
   const span = set => { const v = [...set].sort((a, b) => a - b); return v.length > 1 ? `${v[0]} \u2013 ${v[v.length - 1]}` : String(v[0] || ''); };

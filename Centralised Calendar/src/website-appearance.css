@@ -59,3 +59,19 @@ body{background:var(--background);color:var(--foreground)}
 .team-tab > .lb-default{color:#fff}
 .team-inline-editor>td{padding:0}.team-inline-editor .team-access-editor{margin:12px 0 20px}.team-inline-editor .team-access-editor .field{min-width:0}
 .calendar-date.today .date-number{background:var(--primary);color:var(--on-primary,#fff)}
+
+/* Outlined booking legend and matching event cards; status indicators remain distinct. */
+.dept-chips{gap:8px}
+.dept-chips .chip{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:7px 12px;border:1.5px solid var(--booking-outline,var(--border));border-radius:10px;background:var(--card);color:var(--foreground);line-height:1.3;transition:box-shadow .15s,transform .15s}
+.dept-chips .chip .chip-check{color:var(--booking-outline);font-size:12px;width:12px}
+.dept-chips .chip[aria-pressed=false]{border-style:dashed;color:var(--muted-foreground)}
+.dept-chips .chip[aria-pressed=false] .chip-check{visibility:hidden}
+.dept-chips .chip:hover{box-shadow:0 0 0 1px var(--booking-outline);transform:translateY(-1px)}
+.dept-chips .chip:focus-visible,.calendar-date .ev:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.calendar-date .ev{border:1.5px solid var(--booking-outline,var(--border));background:var(--card);color:var(--foreground);border-radius:6px;padding:3px 5px;line-height:1.35}
+.calendar-date .ev.pend{border-style:dashed;outline:none;background:var(--card);color:var(--foreground);opacity:1}
+.calendar-date .ev.priv{border-color:var(--muted-foreground);background:var(--card);color:var(--muted-foreground)}
+.calendar-date .ev.conflict{outline:2px solid #dc2626;outline-offset:1px}
+.day-item{border:1.5px solid var(--booking-outline,var(--border));background:var(--card)}
+.agenda-item.booking-outlined{padding:10px 12px;margin:8px 0;border:1.5px solid var(--booking-outline,var(--border));border-radius:10px;background:var(--card);color:var(--foreground)}
+.agenda-item.booking-outlined:hover{background:var(--secondary)}

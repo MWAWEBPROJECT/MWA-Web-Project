@@ -398,9 +398,6 @@ export function BookingModalInner({
     const h = editing.hijri;
     const hijriLabel = h && h.year ? `${h.day} ${HIJRI_MONTHS.find(m => m.value === h.month)?.name || ''} ${h.year} AH` : '';
     const hm = (iso) => formatInOrgTz(iso, { hour: '2-digit', minute: '2-digit', hour12: false });
-    const sp = prayerNote(editing.startPrayer);
-    const ep = prayerNote(editing.endPrayer);
-    const nextDay = dateKeyInOrgTz(editing.endAt) !== dateKeyInOrgTz(editing.startAt);
     const statusLabel = editing.status === 'pending' ? (isAdmin ? 'pending' : 'unconfirmed') : editing.status;
     return (
       <div className="overlay show" onClick={onClose}>
@@ -415,7 +412,7 @@ export function BookingModalInner({
             <div style={{ marginTop: 8 }}><b>Date:</b> {dateLabel}</div>
             {hijriLabel && <div><b>Hijri:</b> {hijriLabel}</div>}
             <div>
-              <b>Time:</b> {hm(editing.startAt)}{sp ? ` (${sp})` : ''} – {hm(editing.endAt)}{ep ? ` (${ep})` : ''}{nextDay ? ' next day' : ''}
+              <b>Time:</b> {hm(editing.startAt)}
             </div>
             <div><b>Audience:</b> {AUDIENCES[editing.audience || 'family']}</div>
             {editing.venueName && <div><b>Venue:</b> {editing.venueName}</div>}

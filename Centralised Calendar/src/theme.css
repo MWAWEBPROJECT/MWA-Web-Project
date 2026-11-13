@@ -388,3 +388,13 @@ header.app-header.decorative-panel { background-color: #164d48; border: 1px soli
   .observance-filter-buttons .lb { flex: 1 1 auto; padding: 10px 8px; font-size: 12px; }
   .observance-month-picker { width: 100%; }
 }
+
+/* Public availability picker shares the calendar palette and control proportions. */
+.availability-audience-field{margin-top:14px;min-width:0}
+.availability-audience-field label{display:block;margin-bottom:7px;font-size:12px;font-weight:600;color:var(--muted-foreground)}
+.availability-audience-control{position:relative}
+.availability-audience-control select{appearance:none;width:100%;min-height:44px;padding:11px 38px 11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--foreground);font:inherit;font-size:13px;cursor:pointer;transition:border-color .15s,background-color .15s;box-sizing:border-box}
+.availability-audience-control>svg{position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--muted-foreground);pointer-events:none}
+.availability-audience-control select:hover{border-color:var(--accent);background:var(--secondary)}
+.availability-audience-control select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.availability-audience-control option{background:var(--card);color:var(--foreground)}

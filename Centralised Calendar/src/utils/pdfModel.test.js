@@ -82,3 +82,18 @@ test('month model: sheet grid for the Classic template', () => {
   assert.deepEqual(cells.filter(c => c.highlighted).map(c => c.key), ['2026-10-15']);
   assert.deepEqual(m.sheet.notes, ['Daylight saving starts 4 Oct, 2am']);
 });
+
+test('programme descriptions include start, audience, speaker and public details', () => {
+ const events=[ev('fixed','2026-11-29T08:00:00Z','2026-11-29T10:00:00Z',{audience:'ladies',speakerName:'Guest speaker',programDetails:'Welcome\nProgramme details',notes:'INTERNAL - must not be exported'}),ev('prayer','2026-11-29T09:15:00Z','2026-11-29T11:00:00Z',{startPrayer:{key:'maghreb',offset:15},audience:'gents'})];
+ const model=buildPdfModel({events,basis:'gregorian',year:2026,month:10});
+ assert.match(model.rows[0].events[0].detail,/Programme starts: 7:00 pm · Ladies only · Speaker: Guest speaker/);
+ assert.equal(model.rows[0].events[0].programDetails,'Welcome\nProgramme details');
+ assert.match(model.rows[0].events[1].detail,/Maghreb \+15 min \(8:15 pm\)/);
+ assert.match(model.rows[0].hijriDate,/1448 AH/);
+ assert.equal(model.rows[0].gregorianDate,'Sun, 29th Nov 2026');
+ assert.equal(JSON.stringify(model).includes('INTERNAL'),false);
+ const annual=buildYearPdfModel({events,basis:'gregorian',year:2026});
+ assert.equal(annual.months[10].programmes.length,2);
+ assert.equal(annual.months[10].programmes[0].programDetails,'Welcome\nProgramme details');
+ assert.equal(annual.months[10].programmes[0].gregorianDate,model.rows[0].gregorianDate);
+});
