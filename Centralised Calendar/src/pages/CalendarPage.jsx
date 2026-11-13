@@ -347,14 +347,14 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
           <section className="agenda-section">
             <div className="section-eyebrow"><MapPin size={12} />Venue availability</div>
             <label htmlFor="availability-audience">Availability for</label><select id="availability-audience" value={availabilityAudience} onChange={e=>setAvailabilityAudience(e.target.value)}>{Object.entries(AUDIENCES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
-            <p className="muted">For {selectedKey}. Restricted periods include venue buffers. Select booking times for a final check.</p>
+            <p className="muted">For {selectedKey}.</p>
             <div className="venue-info">
               {venues.length === 0 ? <p>No venues have been set up yet.</p> : (
                 <ul>
                   {venues.map(v => {
                     const item=availability.venues.find(item=>item.venueId===v.id);
-                    const message=availability.loading?'Checking availability…':availability.error||!item?'Availability could not be checked':item.restriction|| (item.busy.length?'Restricted during the periods below':'No restrictions found on this day');
-                    return <li key={v.id}><strong>{venueOpen(v)}</strong><small>{message}{v.bufferHours ? ` · ${v.bufferHours}h buffer` : ''}</small>{!item?.restriction&&item?.busy.map((b,i)=><small key={i}>{dateKeyInOrgTz(b.start)===selectedKey?timeKeyInOrgTz(b.start):'00:00'} – {dateKeyInOrgTz(b.end)===selectedKey?timeKeyInOrgTz(b.end):'24:00'} · {b.reason}</small>)}</li>;
+                    const message=availability.loading?'Checking availability…':availability.error||!item?'Availability could not be checked':item.restriction||item.busy.length?'Not available':'Available';
+                    return <li key={v.id}><strong>{venueOpen(v)}</strong><small>{message}</small></li>;
                   })}
                 </ul>
               )}

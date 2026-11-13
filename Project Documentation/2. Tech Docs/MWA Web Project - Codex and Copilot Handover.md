@@ -3,6 +3,9 @@
 
 # MWA Web Project — Codex / Copilot handover
 
+## Public venue availability simplified — 13 November 2026 — deployed
+
+User requested availability only, with buffer hours and internal reasons hidden. CalendarPage now shows each venue name and Available / Not available for the selected date/audience. Any blocked period or audience restriction marks that day Not available; loading/error states remain honest. Removed detailed blocked time ranges, reasons and buffer labels from the panel. Internal server venue/audience/buffer rules and booking validation unchanged. Integrated Website/Calendar build and generated JS checks passed; Hosting deployed. 73/73 live files match dist (verification retried after one transient HTTP 503 timeout). Source diff reviewed: display-only change, no backend/database changes. No new tests added for this small presentation change. Source and handover committed/pushed in associated release. Evidence: mwa-availability-simple-build.log and mwa-availability-simple-hosting.log in local Temp.
 ## Service pages and static-photo CMS — 13 November 2026 — deployed
 
 User requested four service detail pages using existing MWA content, preserving Make an enquiry, and CMS editing for all static photographs. Designed /services/counselling/, /services/community-support/, /services/cemetery-services/, /services/resident-aalim/. Public source pages reviewed on muhammadiwelfare.org.au; community support is a historical COVID initiative, counselling source is brief, cemetery published amounts do not exactly reconcile (1300 + 144 x 36 = 6484 versus 6500), so page retains quoted terms with instruction to confirm payment schedule; no invented clinical claims/availability. Copied actual Resident Aalim portrait. Three other services have optional CMS photo slots, initially empty. Home photograph, three gallery photos, Khadim portrait and four service photos are editable (nine slots); existing logo editor remains. Dynamic YouTube thumbnails and registration posters retain their respective existing mechanisms.
@@ -1763,4 +1766,6 @@ At the time on 6 November, the user requested leaving SMTP unchanged and recordi
 This handoff changes documentation only. The diagnostic and task-list updates are saved in this worktree and remain uncommitted/unpushed; application deployment is unchanged. Read or transfer this exact updated handover to the Codex workspace before resuming; the main checkout does not automatically receive worktree-local edits.
 
 Cleanup note: archiving the two historical source folders already inside canonical MWA hit an unreadable file. Their originals have NOT been deleted; investigate before deletion. This does not affect removal of the two external Copilot worktrees and 109 scratch targets, which completed and were verified.
+
+
 
