@@ -31,6 +31,13 @@
           }
         },
         {
+          "source": "/api/gallery/admin/upload",
+          "function": {
+            "functionId": "galleryUploadApi",
+            "region": "australia-southeast1"
+          }
+        },
+        {
           "source": "/api/**",
           "function": {
             "functionId": "websiteCmsApi",
