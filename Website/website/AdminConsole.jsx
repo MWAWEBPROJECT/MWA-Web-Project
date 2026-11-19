@@ -2,7 +2,7 @@ import {ADMIN_MODULES} from '@mwa/access';
 import {useAuth} from '@calendar/contexts/AuthContext.jsx';
 import React from 'react';
 import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
-import {CalendarDays,CalendarRange,UtensilsCrossed,HandHeart,Users,Workflow,Wrench,Receipt,HeartHandshake,Megaphone,MicVocal,PanelsTopLeft,ClipboardList,ArrowUpRight} from 'lucide-react';
+import {CalendarDays,CalendarRange,UtensilsCrossed,HandHeart,Users,Workflow,Wrench,Receipt,HeartHandshake,Megaphone,MicVocal,PanelsTopLeft,ClipboardList,ArrowUpRight,Images} from 'lucide-react';
 
 export const adminModules=[
  {name:'Events & Bookings Hub',icon:CalendarDays,description:'Manage bookings, venues and event requests.',href:'/calendar/?view=admin'},
@@ -18,6 +18,7 @@ export const adminModules=[
  {name:'Social Media Administration',icon:Megaphone,description:'Coordinate community communications and updates.'},
  {name:'Speakers & Reciters',icon:MicVocal,description:'Coordinate speakers, reciters and programme participation.'},
  {name:'Website CMS',icon:PanelsTopLeft,description:'Publish website content, branding and appearance.',href:'/cms'},
+ {name:'Photo Gallery',icon:Images,description:'Upload, organise and publish community photographs.',href:'/admin-login?module=gallery'},
  {name:'Form Builder',icon:ClipboardList,description:'Build community forms, link calendar events and review responses.',href:'/admin-login?module=form-builder'},
  {name:'Form Insights',icon:ClipboardList,description:'Explore indexed registration counts and historical trends.',href:'/admin-login?module=form-insights'}
 ];

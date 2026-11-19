@@ -66,6 +66,11 @@
       "live": true
     },
     {
+      "id": "gallery",
+      "name": "Photo Gallery",
+      "live": true
+    },
+    {
       "id": "form-builder",
       "name": "Form Builder",
       "live": true

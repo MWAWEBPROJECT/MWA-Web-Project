@@ -1,0 +1,16 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const api=require('./gallery-api');
+const id='a'.repeat(64);
+const docs=[{id,data:()=>({state:'ready',visibility:'hidden',title:'Secret event',caption:'Private',event:'Hidden gathering',category:'Event',tags:'secret',date:null,width:100,height:80,revision:1})},{id:'b'.repeat(64),data:()=>({state:'ready',visibility:'public',title:'Community',caption:'Public',event:'Open day',category:'Event',tags:'open',date:null,width:100,height:80,revision:1})}];
+const db={doc:()=>({get:async()=>({data:()=>docs[0].data()})}),collection:()=>({orderBy(){return this},limit(){return this},get:async()=>({docs})})};
+function response(){return {statusCode:200,headers:{},status(n){this.statusCode=n;return this},set(k,v){this.headers[k]=v;return this},json(x){this.body=x;return this},send(x){this.body=x;return this}}}
+test('anonymous gallery list projects only public photos',async()=>{const res=response();await api.handle({path:'/api/gallery',method:'GET',query:{},get:()=>null},res,{db,editorFor:async()=>null,origins:new Set()});assert.equal(res.body.items.length,1);assert.equal(res.body.items[0].title,'Community');assert.equal(JSON.stringify(res.body).includes('Secret event'),false)});
+test('hidden previews and originals require gallery access',async()=>{for(const variant of ['preview','original']){const res=response();await assert.rejects(api.handle({path:'/api/gallery/image/'+id+'/'+variant,method:'GET',query:{},get:()=>null},res,{db,editorFor:async()=>null,origins:new Set(),storeFactory:()=>({get:()=>{throw Error('Must not read storage')}})}),e=>e.status===404)}});
+test('metadata accepts clearing optional fields and rejects invalid dates',()=>{const record={title:'Photo',caption:'',event:'',category:'Event',tags:'',date:null,visibility:'hidden'};assert.equal(api.metadata(record).caption,'');assert.throws(()=>api.metadata({...record,date:'2026-02-30'}));assert.throws(()=>api.metadata({...record,visibility:'other'}));});
+test('approved upload stores an original, watermarked variants and ready metadata',async()=>{
+ const sharp=require('sharp'),image=await sharp({create:{width:60,height:40,channels:3,background:'#123456'}}).png().toBuffer(),writes=[],puts=[];
+ const fake={doc:()=>({get:async()=>({exists:false,data:()=>null})}),collection:()=>({doc:()=>({})}),runTransaction:async fn=>fn({get:async()=>({exists:false,data:()=>null}),set:(ref,record)=>writes.push(record)})};
+ const req={path:'/api/gallery/admin/upload',method:'POST',query:{},get:()=> 'https://refreshed.muhammadiwelfare.org.au',is:()=>true,body:{title:'Community art',caption:'',event:'',category:'Art Event',tags:'art',date:null,visibility:'hidden',image:{type:'image/png',data:image.toString('base64')}}};
+ const res=response();await api.handle(req,res,{db:fake,editorFor:async()=>({uid:'admin-1',email:'admin@example.org'}),origins:new Set(['https://refreshed.muhammadiwelfare.org.au']),storeFactory:()=>({put:async(...args)=>puts.push(args)})});
+ assert.equal(res.statusCode,201);assert.equal(puts.length,3);assert.deepEqual(puts.map(p=>p[1]),['original','preview','thumb']);assert.ok(writes.some(w=>w.state==='ready'&&w.visibility==='hidden'));assert.ok(!JSON.stringify(res.body).includes('data'));
+});

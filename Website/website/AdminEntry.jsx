@@ -10,6 +10,7 @@ const modules={
  'form-insights':lazy(()=>import('./FormInsights.jsx')),
  'insights-detail':lazy(()=>import('./InsightsDetail.jsx')),
  'insights-people':lazy(()=>import('./InsightsPeople.jsx'))
+ ,gallery:lazy(()=>import('./GalleryPage.jsx').then(m=>({default:m.AdminGallery})))
 };
 const AdminConsole=lazy(()=>import('./AdminConsole.jsx'));
 export default function AdminEntry(){

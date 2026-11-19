@@ -1,0 +1,4 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+const manifest=require('./gallery-import-manifest.json'),out=path.join(process.env.TEMP||'/tmp','mwa-gallery-source-cache');fs.mkdirSync(out,{recursive:true});
+(async()=>{let next=0,failed=[];async function worker(){while(next<manifest.sourceUrls.length){const i=next++,url=manifest.sourceUrls[i],dest=path.join(out,String(i).padStart(3,'0')+'.img');if(fs.existsSync(dest))continue;try{const r=await fetch(url,{signal:AbortSignal.timeout(30000)});if(!r.ok)throw Error('HTTP '+r.status);const bytes=Buffer.from(await r.arrayBuffer());if(!bytes.length||bytes.length>5*1024*1024)throw Error('Unsupported size');fs.writeFileSync(dest,bytes)}catch(e){failed.push({index:i,error:e.message})}}}await Promise.all(Array.from({length:5},worker));console.log(JSON.stringify({sources:manifest.sourceUrls.length,failed}));if(failed.length)process.exitCode=1})().catch(e=>{console.error(e.message);process.exitCode=1});

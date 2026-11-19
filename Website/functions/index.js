@@ -13,11 +13,13 @@ const origins=new Set(['https://refreshed.muhammadiwelfare.org.au','https://mwa-
 async function editorFor(req,moduleId='website-cms'){try{const match=/^Bearer (.+)$/.exec(req.get('Authorization')||'');if(!match)return null;const token=await getAuth().verifyIdToken(match[1],true);return await resolveAdmin(db,token.uid,token,moduleId)}catch{return null}}
 
 const posterAccessKey=defineSecret('MWA_R2_ACCESS_KEY_ID'),posterSecretKey=defineSecret('MWA_R2_SECRET_ACCESS_KEY');
-exports.websiteCmsApi=onRequest({region:'australia-southeast1',maxInstances:3,secrets:[posterAccessKey,posterSecretKey]},async(req,res)=>{
+const galleryAccessKey=defineSecret('MWA_GALLERY_R2_ACCESS_KEY_ID'),gallerySecretKey=defineSecret('MWA_GALLERY_R2_SECRET_ACCESS_KEY');
+exports.websiteCmsApi=onRequest({region:'australia-southeast1',maxInstances:3,secrets:[posterAccessKey,posterSecretKey,galleryAccessKey,gallerySecretKey]},async(req,res)=>{
  res.set('Cache-Control','no-store');res.set('X-Content-Type-Options','nosniff');
  const origin=req.get('Origin');if(origin&&origins.has(origin)){res.set('Access-Control-Allow-Origin',origin);res.set('Vary','Origin');res.set('Access-Control-Allow-Headers','Authorization, Content-Type');res.set('Access-Control-Allow-Methods','GET, PUT, POST, PATCH, OPTIONS')}
  if(req.method==='OPTIONS')return res.status(origin&&origins.has(origin)?204:403).end();
  try{
+  if(/^\/api\/gallery(?:\/|$)/.test(req.path)){try{return await require('./gallery-api').handle(req,res,{db,editorFor,origins});}catch(e){return res.status(e.status||503).json({error:e.status?e.message:'Gallery is temporarily unavailable.'});}}
   if(/^\/api\/form-insights(?:\/|$)/.test(req.path))return require('./form-insights').handle(req,res,{db,getAuth,origins});
   if(/^\/api\/insights-detail(?:\/|$)/.test(req.path))return require('./insights-detail-api').handle(req,res,{db,getAuth,origins});
   if(/^\/api\/site-images(?:\/|$)/.test(req.path)){try{return await require('./site-images').handle(req,res,{db,editorFor,origins});}catch(e){return res.status(e.status||503).json({error:e.status?e.message:'Photograph storage is temporarily unavailable.'});}}

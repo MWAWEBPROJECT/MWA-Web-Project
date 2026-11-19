@@ -16,6 +16,7 @@ const EnquiriesPage=lazy(()=>import('./EnquiriesPage.jsx'));
 const Registrations=lazy(()=>import('./Registrations.jsx'));
 const NiazEOI=lazy(()=>import('./NiazEOI.jsx'));
 const RegistrationList=lazy(()=>import('./Registrations.jsx').then(module=>({default:module.RegistrationList})));
+const GalleryPage=lazy(()=>import('./GalleryPage.jsx'));
 import './contact-form.js';
 import {schemes,defaults,applyAppearance,normaliseSettings} from '../shared/appearance.js';
 import './firebase-website.css';
@@ -64,6 +65,8 @@ if(location.pathname.replace(/\/$/,'')==='/admin-login'){
 if(location.pathname.replace(/\/$/,'')==='/enquiries'){document.querySelector('#main').hidden=true;document.querySelector('#enquiries-main').hidden=false;document.querySelector('.skip')?.setAttribute('href','#enquiries-main');}
 const niazRoute=location.pathname.replace(/\/$/,'')==='/niaz';
 const registrationsRoute=location.pathname.replace(/\/$/,'')==='/registrations';
+const galleryRoute=location.pathname.replace(/\/$/,'')==='/gallery';
+if(galleryRoute){document.querySelector('#main').hidden=true;const main=document.createElement('main');main.id='gallery-main';document.querySelector('#main').after(main);document.querySelector('.skip')?.setAttribute('href','#gallery-main');}
 if(registrationsRoute){
  document.querySelector('#main').hidden=true;
  const main=document.createElement('main');main.id='registrations-main';document.querySelector('#main').after(main);
@@ -82,7 +85,7 @@ function WebsiteSession(){
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');
  useEffect(()=>{window.mwaAdminSession={loading:session.loading,isAdmin:session.isAdmin,signedIn:!!session.user,modules:session.modules};if(session.loading)return;resolveAdminReady();window.MWA_BRIDGE_RESOLVE();window.dispatchEvent(new Event('mwa-auth-changed'))},[session.loading,session.isAdmin,session.user?.uid,session.modules.join(',')]);
  async function signOut(){setBusy(true);setError('');const frame=document.querySelector('#mwa-calendar-frame');if(frame)frame.remove();window.mwaAdminSession={loading:false,isAdmin:false,signedIn:false,modules:[]};window.dispatchEvent(new Event('mwa-auth-changed'));try{await session.logout()}catch{setError('Could not sign out. Please try again.')}finally{setBusy(false)}}
- return <>{session.isAdmin?<button className="btn alt small admin-header" type="button" disabled={busy} aria-busy={busy} onClick={signOut}>Admin Sign out</button>:<a className="btn alt small admin-header" href="/admin-login">Admin Login</a>}{session.isAdmin&&createPortal(<><a className="nav-admin-console" href="/admin-login" aria-current={location.pathname==='/admin-login'?'page':undefined}>Admin Console</a></>,document.querySelector('#nav'))}{cmsHeading&&createPortal(<AdminBackButton onBack={cmsBack}/>,cmsBackRoot)}{cmsGateRoot.isConnected&&createPortal(<AdminBackButton onBack={()=>{document.querySelector('#close-modal')?.click();goAdminBack();}}/>,cmsGateRoot)}{error&&<span role="alert" className="admin-header-error">{error}</span>}{location.pathname.replace(/\/$/,'')==='/admin-login'&&createPortal(<AdminLogin/>,document.querySelector('#admin-root'))}{location.pathname.replace(/\/$/,'')==='/enquiries'&&createPortal(<EnquiriesPage/>,document.querySelector('#enquiries-root'))}{registrationsRoute&&createPortal(<Registrations/>,document.querySelector('#registrations-main'))}{location.pathname==='/'&&createPortal(<RegistrationList panel/>,document.querySelector('#registrations-panel-root'))}</>;
+ return <>{session.isAdmin?<button className="btn alt small admin-header" type="button" disabled={busy} aria-busy={busy} onClick={signOut}>Admin Sign out</button>:<a className="btn alt small admin-header" href="/admin-login">Admin Login</a>}{session.isAdmin&&createPortal(<><a className="nav-admin-console" href="/admin-login" aria-current={location.pathname==='/admin-login'?'page':undefined}>Admin Console</a></>,document.querySelector('#nav'))}{cmsHeading&&createPortal(<AdminBackButton onBack={cmsBack}/>,cmsBackRoot)}{cmsGateRoot.isConnected&&createPortal(<AdminBackButton onBack={()=>{document.querySelector('#close-modal')?.click();goAdminBack();}}/>,cmsGateRoot)}{error&&<span role="alert" className="admin-header-error">{error}</span>}{location.pathname.replace(/\/$/,'')==='/admin-login'&&createPortal(<AdminLogin/>,document.querySelector('#admin-root'))}{location.pathname.replace(/\/$/,'')==='/enquiries'&&createPortal(<EnquiriesPage/>,document.querySelector('#enquiries-root'))}{registrationsRoute&&createPortal(<Registrations/>,document.querySelector('#registrations-main'))}{galleryRoute&&createPortal(<GalleryPage/>,document.querySelector('#gallery-main'))}{location.pathname==='/'&&createPortal(<RegistrationList panel/>,document.querySelector('#registrations-panel-root'))}</>;
 }
 const adminHeader=document.querySelector('.admin-header');
 const sessionRoot=document.createElement('span');sessionRoot.className='admin-header-slot';
