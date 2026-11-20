@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
-import {ChevronLeft,ChevronRight,Pause,Play,Search,X,ExternalLink,Images,Facebook,Instagram,Youtube,Music2} from 'lucide-react';
+import {ChevronLeft,ChevronRight,Pause,Play,Search,X,ExternalLink,Images} from 'lucide-react';
 import './media-hub.css';
 
 const channels=[['photos','Photo Gallery'],['facebook','Facebook'],['instagram','Instagram'],['tiktok','TikTok'],['youtube','YouTube']];
@@ -22,8 +22,7 @@ function MediaHero({images,title='One community. Many stories.',subtitle='Photog
  return <section className="mwa-media-hero"><div className="mwa-media-hero-photo">{photo?<img key={photo.id} className="mwa-media-fade" src={photo.src} alt=""/>:<span/>}</div><div className="mwa-media-hero-copy"><div className="eyebrow">MWA · MEDIA HUB</div><h1>{title}</h1><p>{subtitle}</p><a className="btn" href="#mwa-media-content">Explore media</a></div>{images.length>1&&<div className="mwa-media-hero-controls"><button type="button" onClick={()=>step(-1)} aria-label="Previous featured photograph"><ChevronLeft/></button><span>{index+1} / {images.length}</span><button type="button" onClick={()=>step(1)} aria-label="Next featured photograph"><ChevronRight/></button><button type="button" onClick={()=>setPaused(v=>!v)} aria-label={paused?'Play featured slideshow':'Pause featured slideshow'}>{paused?<Play/>:<Pause/>}</button></div>}</section>;
 }
 function CategoryCard({category,images,index,count}){return <a className={'mwa-media-category mwa-media-category-'+index%7} href={'/media/photos/?category='+encodeURIComponent(category)}><SlideImage images={images} interval={4400+index*600}/><span><small>Collection {String(index+1).padStart(2,'0')} / {count} photographs</small><strong>{category}</strong><em>Enter the collection <span aria-hidden="true">↗</span></em></span></a>}
-const channelIcons={photos:Images,facebook:Facebook,instagram:Instagram,tiktok:Music2,youtube:Youtube};
-function ChannelCards(){return <div className="mwa-media-channel-grid">{channels.map(([id,name])=>{const Icon=channelIcons[id];return <a key={id} href={'/media/'+id+'/'} className={'mwa-media-channel mwa-media-channel-'+id}><span className="mwa-media-channel-icon" aria-hidden="true"><Icon size={27} strokeWidth={1.8}/></span><small>{id==='photos'?'Community archive':'Social channel'}</small><strong>{name}</strong><span>{id==='youtube'?'Recent MWA recordings':id==='photos'?'Explore the photo collections':'Coming soon'}</span></a>})}</div>}
+function ChannelCards(){return <div className="mwa-media-channel-grid">{channels.map(([id,name])=><a key={id} href={'/media/'+id+'/'} className={'mwa-media-channel mwa-media-channel-'+id}><span className="mwa-media-channel-icon" aria-hidden="true">{id==='photos'?<Images size={30} strokeWidth={1.8}/>:<span className={'mwa-social-brand mwa-social-brand-'+id}/>}</span><small>{id==='photos'?'Community archive':'Social channel'}</small><strong>{name}</strong><span>{id==='youtube'?'Recent MWA recordings':id==='photos'?'Explore the photo collections':'Coming soon'}</span></a>)}</div>}
 function PhotoCategories({photos,selection}){
  const byId=new Map(photos.map(p=>[p.id,p]));
  const cats=[...new Set(photos.map(p=>p.category).filter(Boolean))].sort();
