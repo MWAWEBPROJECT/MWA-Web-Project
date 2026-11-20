@@ -7,7 +7,7 @@ export function initMobileMenu(){
  document.body.append(drawer);
  const pages=drawer.querySelector('.mobile-menu-pages'),accounts=drawer.querySelector('.mobile-menu-account'),closeButton=drawer.querySelector('[aria-label="Close navigation"]');
  const items=[[home,pages],[navigation,pages],[member,accounts],[admin,accounts]].map(([node,target])=>{const marker=document.createComment('mobile menu return point');node.before(marker);return {node,target,marker};});
- const media=matchMedia('(max-width:960px)');let previousOverflow='';
+ const media=matchMedia('(max-width:1199px)');let previousOverflow='';
  trigger.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
  trigger.setAttribute('aria-label','Open navigation');trigger.setAttribute('aria-controls',drawer.id);trigger.setAttribute('aria-haspopup','dialog');
  const appearance=document.getElementById('appearance-open'),label=document.createElement('span');label.className='mobile-appearance-label';label.textContent='Appearance & text size';appearance.append(label);
