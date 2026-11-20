@@ -15,9 +15,16 @@
   },
   {
     "id": "events",
-    "title": "MWA programmes",
+    "title": "Upcoming Programs",
     "href": "/#events",
-    "description": "Find MWA programmes in the community calendar. Check the page for current dates.",
+    "description": "Find confirmed upcoming MWA programmes in the community calendar. Check the page for current dates.",
+    "public": true
+  },
+  {
+    "id": "whats-on",
+    "title": "What’s On today",
+    "href": "/#today-panels",
+    "description": "View the Your community, today panels for prayer times, today's programme, open registrations and Media Hub highlights.",
     "public": true
   },
   {
@@ -45,7 +52,7 @@
     "id": "services",
     "title": "Community services",
     "href": "/#services",
-    "description": "Find community support, counselling, cemetery services and religious guidance contacts.",
+    "description": "Find venue booking, community support, counselling, cemetery services and religious guidance contacts.",
     "public": true
   },
   {
@@ -64,9 +71,23 @@
   },
   {
     "id": "gallery",
-    "title": "MWA Gallery",
-    "href": "/#gallery",
-    "description": "Browse the gallery.",
+    "title": "Media Hub",
+    "href": "/media/",
+    "description": "Explore the Photo Gallery and MWA social channels. YouTube recordings are available; Facebook, Instagram and TikTok feeds are coming soon.",
+    "public": true
+  },
+  {
+    "id": "photo-gallery",
+    "title": "Photo Gallery",
+    "href": "/media/photos/",
+    "description": "Browse all published MWA community photographs in the Media Hub.",
+    "public": true
+  },
+  {
+    "id": "youtube",
+    "title": "MWA YouTube recordings",
+    "href": "/media/youtube/",
+    "description": "Watch MWA's five latest completed public livestreams in the Media Hub or open them on YouTube.",
     "public": true
   },
   {

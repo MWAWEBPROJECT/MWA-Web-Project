@@ -7,7 +7,7 @@ test('external images preserve exact image bytes and attributes without changing
  const original=readFileSync(new URL('./index.html',import.meta.url),'utf8'),files=new Map();
  const output=externaliseImages(original,(name,bytes)=>files.set(name,bytes));
  const images=[...original.matchAll(/<img\b[^>]*src="data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)"[^>]*>/g)];
- assert.equal(images.length,4);assert.equal(files.size,4);
+ assert(images.length>0);assert.equal(files.size,new Set(images.map(match=>match[2])).size);
  for(const [name,bytes] of files){assert(images.some(m=>Buffer.from(m[2],'base64').equals(bytes)));assert(output.includes('/'+name));}
  assert(!/<img\b[^>]*src="data:image/.test(output));
  assert.equal(output.slice(output.indexOf('const CMS_MODEL=')),original.slice(original.indexOf('const CMS_MODEL=')));

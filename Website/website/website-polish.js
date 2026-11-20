@@ -1,13 +1,13 @@
 // Accessible shared chrome and swipeable pathways; no booking or login logic.
-const track=document.querySelector('#pathway-track');
-if(track){
+function setupPathwayCarousel(trackId,prefix,dotAttribute){
+ const track=document.getElementById(trackId);if(!track)return;
  const cards=[...track.querySelectorAll('.path-card')];
- const dots=[...document.querySelectorAll('[data-pathway]')];
- const previous=document.querySelector('#pathway-prev'),next=document.querySelector('#pathway-next');
+ const dots=[...document.querySelectorAll('['+dotAttribute+']')];
+ const previous=document.getElementById(prefix+'-prev'),next=document.getElementById(prefix+'-next');
  const reduced=matchMedia('(prefers-reduced-motion: reduce)');
  let active=0,frame;
  const offsets=()=>cards.map(card=>Math.min(card.offsetLeft-cards[0].offsetLeft,track.scrollWidth-track.clientWidth));
- function sync(){const positions=offsets();active=positions.reduce((best,x,i)=>Math.abs(x-track.scrollLeft)<=Math.abs(positions[best]-track.scrollLeft)?i:best,0);previous.disabled=track.scrollLeft<=2;next.disabled=track.scrollLeft>=track.scrollWidth-track.clientWidth-2;dots.forEach((dot,i)=>dot.setAttribute('aria-current',String(i===active)));document.querySelector('#pathway-position').textContent=`${active+1} / ${cards.length}`;}
+ function sync(){const positions=offsets();active=positions.reduce((best,x,i)=>Math.abs(x-track.scrollLeft)<=Math.abs(positions[best]-track.scrollLeft)?i:best,0);previous.disabled=track.scrollLeft<=2;next.disabled=track.scrollLeft>=track.scrollWidth-track.clientWidth-2;dots.forEach((dot,i)=>dot.setAttribute('aria-current',String(i===active)));document.getElementById(prefix+'-position').textContent=`${active+1} / ${cards.length}`;}
  function go(i){const target=Math.max(0,Math.min(cards.length-1,i));track.scrollTo({left:offsets()[target],behavior:reduced.matches?'instant':'smooth'});}
  previous.addEventListener('click',()=>go(active-1));next.addEventListener('click',()=>go(active+1));dots.forEach((dot,i)=>dot.addEventListener('click',()=>go(i)));
  track.addEventListener('scroll',()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(sync)},{passive:true});
@@ -15,10 +15,12 @@ if(track){
  track.addEventListener('focusin',event=>{const card=event.target.closest('.path-card');if(card){const box=card.getBoundingClientRect(),viewport=track.getBoundingClientRect();if(box.left<viewport.left||box.right>viewport.right+2)go(cards.indexOf(card));}});
  new ResizeObserver(sync).observe(track);sync();
 }
+setupPathwayCarousel('pathway-track','pathway','data-pathway');
+setupPathwayCarousel('services-track','services','data-service-panel');
 const nav=document.querySelector('#nav');
 function updateCurrentLink(){for(const link of nav.querySelectorAll('a')){const url=new URL(link.href);const current=url.pathname===location.pathname&&(url.hash?url.hash===location.hash:!location.hash);if(current)link.setAttribute('aria-current',url.hash?'location':'page');else link.removeAttribute('aria-current');}}
 window.addEventListener('hashchange',updateCurrentLink);updateCurrentLink();
-document.querySelector('a[href="/#community-news"]')?.addEventListener('click',()=>{document.querySelector('[data-panel="2"]')?.click();});
+document.querySelector('a[href="/#community-news"]')?.addEventListener('click',()=>{document.querySelector('[data-panel="3"]')?.click();});
 
 const chromeHeader=document.querySelector('.header');new ResizeObserver(()=>document.documentElement.style.setProperty('--mwa-chrome-height',chromeHeader.getBoundingClientRect().height+'px')).observe(chromeHeader);
 

@@ -11,12 +11,13 @@ if(page){
  <div class="service-body-grid"><article class="service-prose"><p class="service-opening" data-service="body"></p><h2 data-service="section_title"></h2><p data-service="section_body"></p></article><aside class="service-contact"><div class="eyebrow">GET IN TOUCH</div><h2 data-service="contact_title"></h2><p data-service="contact_body"></p><a class="service-email"></a><a class="service-phone"></a><button type="button" class="btn alt service-enquire">Make an enquiry <span aria-hidden="true">↗</span></button></aside></div>
  <section class="service-more"><h2>Explore our services</h2><div class="service-siblings"></div></section>`;
  document.querySelector('#main').hidden=true;document.querySelector('#main').after(main);document.querySelector('.skip')?.setAttribute('href','#service-main');
- const image=main.querySelector('figure img');image.dataset.cmsPhoto=prefix+'photo';image.dataset.cmsAlt=prefix+'photo_alt';
+ const image=main.querySelector('figure img');let ready=false,photoWait;
+ function showPage(){if(ready)return;ready=true;clearTimeout(photoWait);window.mwaPageReady?.();}
  for(const other of pages.filter(p=>p.id!==page.id)){const a=document.createElement('a');a.href='/services/'+other.id+'/';a.textContent=other.title+' ↗';main.querySelector('.service-siblings').append(a);}
  for(const button of main.querySelectorAll('.service-enquire'))button.onclick=()=>document.querySelectorAll('#services [data-action="support"]')[pages.indexOf(page)]?.click();
  function render(){const content=window.MWA_PUBLIC_CONTENT||{};const value=key=>content[prefix+key]??page[key]??'';for(const el of main.querySelectorAll('[data-service]')){el.textContent=value(el.dataset.service);el.dataset.cms=prefix+el.dataset.service;}
-  const photo=value('photo');main.querySelector('figure').hidden=!photo;main.querySelector('.service-hero').classList.toggle('without-photo',!photo);if(photo){image.src=photo;image.alt=value('photo_alt');}
+  const photo=value('photo'),loaded=window.mwaContentLoadFinished===true;main.querySelector('figure').hidden=loaded&&!photo;main.querySelector('.service-hero').classList.toggle('without-photo',loaded&&!photo);if(loaded&&photo){image.alt=value('photo_alt');if(image.getAttribute('src')!==photo)image.src=photo;if(image.complete)showPage();else if(!ready){image.addEventListener('load',showPage,{once:true});image.addEventListener('error',showPage,{once:true});photoWait=setTimeout(showPage,8000);}}else if(loaded)showPage();
   const email=main.querySelector('.service-email'),phone=main.querySelector('.service-phone');email.hidden=!value('email');email.textContent=value('email');email.href='mailto:'+value('email');phone.hidden=!value('phone');phone.textContent=value('phone');phone.href='tel:'+value('phone').replace(/[^+0-9]/g,'');document.title=value('title')+' | Muhammadi Welfare Association';
  }
- window.addEventListener('mwa-content-rendered',render);render();window.mwaPageReady?.();
+ window.addEventListener('mwa-content-rendered',render);window.addEventListener('mwa-content-load-finished',render);render();
 }

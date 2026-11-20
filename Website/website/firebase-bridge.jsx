@@ -1,7 +1,6 @@
 import './cms-media.js';
 import './service-pages.js';
 import './mwa-assistant-mount.jsx';
-import './YouTubePanel.jsx';
 import {normaliseTextSize,applyTextSize} from '../shared/text-size.js';
 import {recordActivity} from '@calendar/services/auditService.js';
 import React,{lazy,Suspense,useState,useEffect} from 'react';
@@ -21,6 +20,7 @@ import './contact-form.js';
 import {schemes,defaults,applyAppearance,normaliseSettings} from '../shared/appearance.js';
 import './firebase-website.css';
 import './website-polish.css';
+import './home-sections.css';
 import './website-polish.js';
 import {initMobileMenu} from './mobile-menu.js';
 import './solar-panel.js';
