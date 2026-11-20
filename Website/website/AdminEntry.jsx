@@ -6,6 +6,8 @@ import {adminReturnTarget} from './admin-entry-route.mjs';
 const modules={
  niaz:lazy(()=>import('./NiazAdmin.jsx')),
  donations:lazy(()=>import('./DonationsAdmin.jsx')),
+ treasurer:lazy(()=>import('./TreasurerDashboard.jsx')),
+ 'social-media':lazy(()=>import('./SocialMediaAdmin.jsx')),
  'form-builder':lazy(()=>import('./FormBuilder.jsx')),
  'form-insights':lazy(()=>import('./FormInsights.jsx')),
  'insights-detail':lazy(()=>import('./InsightsDetail.jsx')),
@@ -16,7 +18,7 @@ const AdminConsole=lazy(()=>import('./AdminConsole.jsx'));
 export default function AdminEntry(){
  const session=useAuth(),query=new URLSearchParams(location.search);
  const returnTo=adminReturnTarget(query.get('returnTo'));
- const destination=returnTo?.includes('module=donations')?'Donation Administration':returnTo?.includes('module=niaz')?'Niaz Administration':returnTo?.includes('module=form-builder')?'Form Builder':returnTo?.includes('insights')?'Form Insights':returnTo?.startsWith('/cms')?'Website CMS':returnTo?.startsWith('/enquiries')?'Contact & Enquiries':returnTo?.startsWith('/tools-automation')?'Tools & Automation':returnTo?.startsWith('/calendar-management')?'Calendar Management':'Events & Bookings';
+ const destination=returnTo?.includes('module=treasurer')?"Treasurer's Dashboard":returnTo?.includes('module=social-media')?'Social Media Administration':returnTo?.includes('module=donations')?'Donation Administration':returnTo?.includes('module=niaz')?'Niaz Administration':returnTo?.includes('module=form-builder')?'Form Builder':returnTo?.includes('insights')?'Form Insights':returnTo?.startsWith('/cms')?'Website CMS':returnTo?.startsWith('/enquiries')?'Contact & Enquiries':returnTo?.startsWith('/tools-automation')?'Tools & Automation':returnTo?.startsWith('/calendar-management')?'Calendar Management':'Events & Bookings';
  useEffect(()=>{window.mwaPageReady?.();},[]);
  useEffect(()=>{if(!session.loading&&session.isAdmin&&returnTo)location.replace(returnTo);},[session.loading,session.isAdmin,returnTo]);
  if(session.loading)return <div className="admin-welcome"><AdminBackButton/><p>Checking your admin session…</p></div>;

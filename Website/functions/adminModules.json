@@ -53,7 +53,7 @@
     {
       "id": "social-media",
       "name": "Social Media Administration",
-      "live": false
+      "live": true
     },
     {
       "id": "speakers-reciters",
@@ -67,7 +67,7 @@
     },
     {
       "id": "gallery",
-      "name": "Photo Gallery",
+      "name": "Media Hub",
       "live": true
     },
     {

@@ -100,6 +100,7 @@ service cloud.firestore {
     match /_registrationRateLimits/{path=**} { allow read, write: if false; }
     match /_registrationPosterCleanup/{path=**} { allow read, write: if false; }
     match /galleryPhotos/{path=**} { allow read, write: if false; }
+    match /gallerySettings/{path=**} { allow read, write: if false; }
     match /_galleryUploadLimits/{path=**} { allow read, write: if false; }
     match /_hijriRecoveryRuns/{path=**} { allow read, write: if false; }
     match /_hijriNotificationReview/{path=**} { allow read, write: if false; }
