@@ -3,6 +3,10 @@
 
 # MWA Web Project — Codex / Copilot handover
 
+## Media Hub submenu hierarchy — 20 November 2026 — deployed; Git push pending
+
+User clarified that Media Hub is the parent destination, so its internal menu should list Photo Gallery, Facebook, Instagram, TikTok and YouTube only. Removed the duplicate Media Hub link from `Website/website/MediaHubPage.jsx` while retaining the main site navigation link to `/media/`. No gallery data, social connection, API or permission changes. Integrated Website/Calendar build passed. Firebase website Hosting release succeeded (87 files). Live headless Chrome at 1440px and 390px verified those five internal menu labels on `/media/`, `/media/photos/`, `/media/youtube/` and `/media/instagram/`; 62 public photo tiles still rendered, with zero page errors and no horizontal overflow. Git commit and push are pending at this checkpoint. Next: commit and push this code with the handover, then confirm clean status. No backend or rules redeployment was needed.
+
 ## Media Hub and Treasurer's Dashboard — 20 November 2026 — deployed and pushed
 
 Social access follow-up, 20 November 2026: MWA confirmed there is currently **no access to its Facebook Page or TikTok account**, and no social account access to complete these connections. This is a documentation-only clarification; no code, configuration, provider authorization or deployment changed. Leave Facebook, Instagram and TikTok as Coming soon. When MWA obtains account administrator access, first confirm the account and developer-app permissions, then implement and test the authorized feed connection. The existing YouTube feed remains live. This note is being committed and pushed to the existing MWA main branch with no application changes.

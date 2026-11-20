@@ -7,7 +7,7 @@ const socialLinks={facebook:'https://www.facebook.com/MWA51214/',instagram:'http
 const route=()=>{const parts=location.pathname.replace(/\/+$/,'').split('/');return parts[2]||'home'};
 async function publicPhotos(){let after='',items=[];do{const response=await fetch('/api/gallery'+(after?'?after='+encodeURIComponent(after):''),{cache:'no-store'});if(!response.ok)throw Error('Photographs are temporarily unavailable.');const page=await response.json();items.push(...page.items);after=page.next;if(items.length>2000)break}while(after);return items}
 async function featured(){const response=await fetch('/api/gallery/featured',{cache:'no-store'});if(!response.ok)throw Error('Featured photographs are temporarily unavailable.');return response.json()}
-function MediaNav({current}){return <nav className="mwa-media-nav" aria-label="Media Hub pages"><a href="/media/" aria-current={current==='home'?'page':undefined}>Media Hub</a>{channels.map(([id,name])=><a key={id} href={'/media/'+id+'/'} aria-current={current===id?'page':undefined}>{name}</a>)}</nav>}
+function MediaNav({current}){return <nav className="mwa-media-nav" aria-label="Media Hub pages">{channels.map(([id,name])=><a key={id} href={'/media/'+id+'/'} aria-current={current===id?'page':undefined}>{name}</a>)}</nav>}
 function SlideImage({images,className='',interval=6500,paused=false}){
  const [index,setIndex]=useState(0);
  useEffect(()=>setIndex(0),[images.map(p=>p.id).join(',')]);
