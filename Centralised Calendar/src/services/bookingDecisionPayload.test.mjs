@@ -13,3 +13,9 @@ test('bulk approval retains pending-status and conflict checks', () => {
   assert.equal(bulk.expectedStatus, 'pending');
   assert.equal(bulk.requireNoConflict, true);
 });
+test('single waiver includes the explicit flag without disabling other request fields', () => {
+  const value = bookingDecisionPayload({ eventId: 'one', status: 'confirmed', note: 'Consecutive programmes', bufferOverride: true });
+  assert.equal(value.bufferOverride, true);
+  assert.equal(value.note, 'Consecutive programmes');
+  assert.equal(Object.hasOwn(value, 'expectedStatus'), false);
+});

@@ -17,3 +17,10 @@ test('bulk rejection passes the common reason without an approval conflict gate'
   assert.equal(calls[0].note, 'Outside programme scope');
   assert.equal(calls[0].requireNoConflict, false);
 });
+test('bulk buffer waiver keeps per-booking server checks and cannot bypass actual overlap', async () => {
+  const calls = [];
+  await runBulkBookingDecision([{ id: 'a', title: 'First', status: 'pending' }], 'confirmed', 'Consecutive programmes', async input => calls.push(input), { bufferOverride: true });
+  assert.equal(calls[0].bufferOverride, true);
+  assert.equal(calls[0].requireNoConflict, false);
+  assert.equal(calls[0].expectedStatus, 'pending');
+});

@@ -178,6 +178,7 @@ function BookingQueue({ bookings, pending, venues, departments, hijriOverrides, 
   const [selected, setSelected] = useState([]);
   const [bulkAction, setBulkAction] = useState(null);
   const [bulkNote, setBulkNote] = useState('');
+  const [bulkWaiveBuffer, setBulkWaiveBuffer] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResults, setBulkResults] = useState([]);
   const { deleted, busy, remove, promptElement, feedback } = useBookingDeletion({
@@ -197,15 +198,16 @@ function BookingQueue({ bookings, pending, venues, departments, hijriOverrides, 
   }
 
   async function applyBulkDecision() {
-    if (!pending || bulkBusy || !chosen.length || !bulkAction || (bulkAction === 'rejected' && !bulkNote.trim())) return;
+    if (!pending || bulkBusy || !chosen.length || !bulkAction || (bulkAction === 'rejected' && !bulkNote.trim()) || (bulkAction === 'confirmed' && bulkWaiveBuffer && bulkNote.trim().length < 5)) return;
     setBulkBusy(true);
     setBulkResults([]);
     try {
-      const results = await runBulkBookingDecision(chosen, bulkAction, bulkNote.trim(), decideBooking);
+      const results = await runBulkBookingDecision(chosen, bulkAction, bulkNote.trim(), decideBooking, { bufferOverride: bulkWaiveBuffer });
       setBulkResults(results);
       setSelected(ids => ids.filter(id => !results.some(row => row.id === id && ['approved', 'rejected'].includes(row.outcome))));
       setBulkAction(null);
       setBulkNote('');
+      setBulkWaiveBuffer(false);
       if (results.some(row => ['approved', 'rejected'].includes(row.outcome))) onSaved?.();
     } finally { setBulkBusy(false); }
   }
@@ -214,8 +216,8 @@ function BookingQueue({ bookings, pending, venues, departments, hijriOverrides, 
     <div className="wrap">
       <div className="bar">
         <span>{chosen.length} selected</span>
-        {pending && <><button type="button" className="btn" disabled={busy || bulkBusy || !chosen.length} onClick={() => { setBulkAction('confirmed'); setBulkResults([]); }}>Approve selected</button>
-          <button type="button" className="btn alt" disabled={busy || bulkBusy || !chosen.length} onClick={() => { setBulkAction('rejected'); setBulkResults([]); }}>Reject selected</button></>}
+        {pending && <><button type="button" className="btn" disabled={busy || bulkBusy || !chosen.length} onClick={() => { setBulkAction('confirmed'); setBulkWaiveBuffer(false); setBulkResults([]); }}>Approve selected</button>
+          <button type="button" className="btn alt" disabled={busy || bulkBusy || !chosen.length} onClick={() => { setBulkAction('rejected'); setBulkWaiveBuffer(false); setBulkResults([]); }}>Reject selected</button></>}
         <button type="button" className="btn del" disabled={busy || bulkBusy || !chosenDeletable.length} onClick={() => remove(chosenDeletable)}>
           <Trash2 size={16} aria-hidden="true" /> {busy ? 'Deleting...' : `Delete selected (${chosenDeletable.length})`}
         </button>
@@ -223,10 +225,11 @@ function BookingQueue({ bookings, pending, venues, departments, hijriOverrides, 
       </div>
       {bulkAction && pending && <section className="booking-bulk-review" aria-label="Review bulk booking decision">
         <h3>{bulkAction === 'confirmed' ? 'Approve' : 'Reject'} {chosen.length} selected booking{chosen.length === 1 ? '' : 's'}?</h3>
-        <p>Each booking is checked again when saved. Conflicting or changed bookings are left pending and listed below.</p>
+        <p>Each booking is checked again when saved. Actual time overlaps and cross-venue restrictions cannot be waived. Changed bookings remain pending.</p>
         <ul>{chosen.map(item => <li key={item.id}>{item.title} · {new Date(item.startAt).toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })}{item.hasConflict ? ' · Conflict flagged' : ''}</li>)}</ul>
-        {bulkAction === 'rejected' && <label>Reason sent to each requester<input value={bulkNote} maxLength={1000} required onChange={e => setBulkNote(e.target.value)} placeholder="Enter a clear reason" /></label>}
-        <div className="bar"><button type="button" className="btn alt" disabled={bulkBusy} onClick={() => { setBulkAction(null); setBulkNote(''); }}>Cancel</button><button type="button" className="btn" disabled={bulkBusy || !chosen.length || (bulkAction === 'rejected' && !bulkNote.trim())} onClick={applyBulkDecision}>{bulkBusy ? 'Processing…' : `Confirm ${bulkAction === 'confirmed' ? 'approval' : 'rejection'}`}</button></div>
+        {bulkAction === 'confirmed' && <label className="booking-buffer-waiver"><input type="checkbox" checked={bulkWaiveBuffer} disabled={bulkBusy} onChange={e => setBulkWaiveBuffer(e.target.checked)} />Waive same-venue scheduling buffers where booked times do not overlap</label>}
+        {(bulkAction === 'rejected' || bulkWaiveBuffer) && <label>{bulkAction === 'rejected' ? 'Reason sent to each requester' : 'Decision note (required for buffer waiver)'}<input value={bulkNote} maxLength={1000} required onChange={e => setBulkNote(e.target.value)} placeholder="Enter a clear reason" /></label>}
+        <div className="bar"><button type="button" className="btn alt" disabled={bulkBusy} onClick={() => { setBulkAction(null); setBulkNote(''); setBulkWaiveBuffer(false); }}>Cancel</button><button type="button" className="btn" disabled={bulkBusy || !chosen.length || (bulkAction === 'rejected' && !bulkNote.trim()) || (bulkAction === 'confirmed' && bulkWaiveBuffer && bulkNote.trim().length < 5)} onClick={applyBulkDecision}>{bulkBusy ? 'Processing…' : `Confirm ${bulkAction === 'confirmed' ? 'approval' : 'rejection'}`}</button></div>
       </section>}
       {bulkResults.length > 0 && <section className="booking-bulk-results" role="status"><strong>Bulk decision results</strong><p>{bulkResults.filter(row => row.outcome === 'approved').length} approved · {bulkResults.filter(row => row.outcome === 'rejected').length} rejected · {bulkResults.filter(row => row.outcome === 'failed').length} need review · {bulkResults.filter(row => row.outcome === 'skipped').length} skipped</p>{bulkResults.some(row => ['failed', 'skipped'].includes(row.outcome)) && <ul>{bulkResults.filter(row => ['failed', 'skipped'].includes(row.outcome)).map(row => <li key={row.id}>{row.title}: {row.reason}</li>)}</ul>}</section>}
       {feedback}

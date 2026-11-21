@@ -75,6 +75,7 @@ export function BookingModalInner({
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
   const [busy, setBusy] = useState(false);
+  const [waiveBuffer, setWaiveBuffer] = useState(false);
   // Disables the submit button after a *successful* submission until the
   // user edits any field again; failed attempts stay retryable.
   const [locked, setLocked] = useState(false);
@@ -108,7 +109,7 @@ export function BookingModalInner({
   useEffect(() => {
     setSavedBooking(null);
     setForm(emptyForm(selectedBooking, initialDate, isAdmin));
-    setErr(''); setOk(''); setLocked(false); setEditMode(false); setScope('single');
+    setErr(''); setOk(''); setLocked(false); setEditMode(false); setScope('single'); setWaiveBuffer(false);
     setRep(DEFAULT_REPEAT); setConflict(null); setPreview(null);
     setProtectionWarning(''); setExtras(null); setExtrasSection(null);
     setBookingVerification(null); setVerificationCode(''); setPhoneConfirmation(null); setPhoneIdToken('');
@@ -413,6 +414,7 @@ export function BookingModalInner({
             <div>
               <span className={`tag st-${editing.status}`}>{statusLabel}</span>
               {isAdmin && editing.hasConflict && <span className="conflict-badge">Overlaps another booking at this venue</span>}
+              {isAdmin && editing.status === 'confirmed' && editing.bufferOverride?.venueId === editing.venueId && editing.bufferOverride?.startAt === editing.startAt && editing.bufferOverride?.endAt === editing.endAt && <span className="tag">Scheduling buffer waived by admin</span>}
             </div>
             <div style={{ marginTop: 8 }}><b>Date:</b> {dateLabel}</div>
             {hijriLabel && <div><b>Hijri:</b> {hijriLabel}</div>}
@@ -568,6 +570,10 @@ export function BookingModalInner({
   async function decide(status) {
     if (busy || locked) return;
     setErr(''); setOk('');
+    if (status === 'confirmed' && waiveBuffer && form.decisionNote.trim().length < 5) {
+      setErr('Enter a reason of at least five characters to waive a scheduling buffer.');
+      return;
+    }
     setBusy(true);
     try {
       let current = editing;
@@ -586,15 +592,18 @@ export function BookingModalInner({
       const result = await decideBooking({
         eventId: editing.id, status,
         visibility: form.visibility,
-        note: form.decisionNote || ''
+        note: form.decisionNote || '',
+        bufferOverride: status === 'confirmed' && waiveBuffer
       });
       const updated = {
         ...current, status: result.status, visibility: form.visibility,
-        decisionNote: form.decisionNote || '', hasConflict: result.hasConflict
+        decisionNote: form.decisionNote || '', hasConflict: result.hasConflict,
+        bufferOverride: result.bufferWaived ? { reason: form.decisionNote.trim(), venueId: current.venueId, startAt: current.startAt, endAt: current.endAt } : current.bufferOverride
       };
       setSavedBooking(updated);
       setForm(emptyForm(updated, initialDate, isAdmin));
       setLocked(true);
+      setWaiveBuffer(false);
       setEditMode(false);
       setOk(status === 'confirmed' ? 'Booking approved. This booking is now confirmed.' : `Booking ${status}.`);
       onSaved && onSaved();
@@ -767,7 +776,7 @@ export function BookingModalInner({
                           <li key={c2.id}>{c2.title}{c2.venueName ? ` @ ${c2.venueName}` : ''} — {c2.status} — {fmtRange(c2.startAt, c2.endAt)}{c2.departmentName ? ` — ${c2.departmentName}` : ''}{c2.contactName ? ` — ${c2.contactName}` : ''}</li>
                         ))}
                       </ul>
-                      You can still save: accept the overlap, change the time/venue, or reject.
+                      You can still save a request for review. To approve consecutive bookings in the same venue, an admin can waive a buffer with a reason. Actual time overlaps and cross-venue restrictions still require a schedule change.
                     </>
                   : 'This conflicts with another booking at this venue. You can still submit; the request is subject to admin approval.'}
               </div>
@@ -865,11 +874,14 @@ export function BookingModalInner({
             <div className="card" style={{ marginTop: 14 }}>
               <div><b>Status:</b> <span className={`tag st-${editing.status}`}>{editing.status}</span>
                 {editing.hasConflict && <span className="conflict-badge">Overlaps another booking at this venue</span>}
+                {editing.status === 'confirmed' && editing.bufferOverride?.venueId === editing.venueId && editing.bufferOverride?.startAt === editing.startAt && editing.bufferOverride?.endAt === editing.endAt && <span className="tag">Scheduling buffer waived by admin</span>}
               </div>
               {isAdmin && editing.status === 'pending' && (
                 <>
-                  <label>Decision note (optional)</label>
+                  <label>Decision note {waiveBuffer ? '(required for buffer waiver)' : '(optional)'}</label>
                   <input disabled={busy} value={form.decisionNote} onChange={e => set('decisionNote', e.target.value)} />
+                  <label className="booking-buffer-waiver"><input type="checkbox" disabled={busy} checked={waiveBuffer} onChange={e => setWaiveBuffer(e.target.checked)} />Waive a same-venue scheduling buffer if times do not overlap</label>
+                  {waiveBuffer && <p className="muted">The server checks the live bookings. This cannot waive an actual time overlap or a restriction between different venue areas.</p>}
                   <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                     <button type="button" className="btn pri" disabled={busy || locked} onClick={() => decide('confirmed')}>Approve</button>
                     <button type="button" className="btn del" disabled={busy || locked} onClick={() => decide('rejected')}>Reject</button>

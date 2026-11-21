@@ -199,7 +199,7 @@ async function findOverlaps(venueId, startAt, endAt, excludeId, tx, bufferHours,
   return events
     .filter(d => d.id !== excludeId && venueConflictReason(cand,d,vById.get(venueId),vById.get(d.venueId)) && rangesConflict(cand, d, 0))
     .map(d => ({
-      id: d.id, title: d.title, status: d.status, startAt: d.startAt, endAt: d.endAt,
+      id: d.id, title: d.title, status: d.status, venueId: d.venueId, startAt: d.startAt, endAt: d.endAt,
       reason:venueConflictReason(cand,d,vById.get(venueId),vById.get(d.venueId)),
       departmentName: d.departmentName, contactName: d.contactName, visibility: d.visibility,
       venueName: d.venueName || (vById.get(d.venueId) || {}).name || ''
@@ -599,7 +599,7 @@ exports.submitBooking = onCall({ cors: true, secrets: [...emailSecrets, BOOKING_
 // â”€â”€ Callable: admin confirm/reject/cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (request) => {
   const admin = await requireAdmin(request.auth);
-  const { eventId, status, visibility, note, expectedStatus, requireNoConflict } = request.data || {};
+  const { eventId, status, visibility, note, expectedStatus, requireNoConflict, bufferOverride } = request.data || {};
   const bulkPolicy = require('./bookingBulkDecisionPolicy');
   if (!eventId || !STATUSES.includes(status) || status === 'pending') {
     throw new HttpsError('invalid-argument', 'eventId and a valid target status are required.');
@@ -614,10 +614,11 @@ exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
 
   let hasConflict = before.hasConflict;
   let conflictWith = before.conflictWith || [];
+  let waivedBuffer = [];
   if (status === 'confirmed') {
     const overlaps = await findOverlaps(before.venueId, before.startAt, before.endAt, eventId);
-    bulkPolicy.checkConflict(overlaps, requireNoConflict, HttpsError);
-    if(overlaps.some(o=>o.reason!=='Existing booking at this venue'))throw new HttpsError('failed-precondition','This booking conflicts with the venue availability policy. Change the venue, audience or time before confirming.');
+    waivedBuffer = bulkPolicy.checkApprovalConflicts({ venueId: before.venueId, startAt: before.startAt, endAt: before.endAt, overlaps, requireNoConflict, bufferOverride, note, HttpsError });
+    if(overlaps.some(o=>o.reason!=='Existing booking at this venue' && !waivedBuffer.some(waived=>waived.id===o.id)))throw new HttpsError('failed-precondition','This booking conflicts with the venue availability policy. Change the venue, audience or time before confirming.');
     hasConflict = overlaps.length > 0;
     conflictWith = overlaps.map(o => o.id);
   }
@@ -629,6 +630,11 @@ exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
     decidedAt: FieldValue.serverTimestamp(),
     decisionNote: note || '',
     updatedAt: FieldValue.serverTimestamp()
+  };
+  if (waivedBuffer.length) patch.bufferOverride = {
+    reason: String(note).trim(), by: admin.uid, at: FieldValue.serverTimestamp(),
+    venueId: before.venueId, startAt: before.startAt, endAt: before.endAt,
+    conflictIds: waivedBuffer.map(row => row.id)
   };
   // Visibility is now set at submission time and editable by an admin at any
   // point (see updateBooking); a decision only overrides it if the admin
@@ -648,7 +654,7 @@ exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
   await writeAudit({
     entityType: 'event', entityId: eventId, action: `status_${status}`,
     userId: admin.uid, userEmail: admin.email, note: note || '',
-    diff: { from: before.status, to: status }
+    diff: { from: before.status, to: status, bufferWaived: waivedBuffer.length > 0, waivedConflictIds: waivedBuffer.map(row => row.id) }
   });
 
   // Rows 3-5: requester always; cancellations also go to the admin inbox. Confirmations carry an .ics.
@@ -658,7 +664,7 @@ exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
   if (reqMail && status === 'confirmed') reqMail.attachments = [notify.icsAttachment(decided, eventId)];
   await sendAll([reqMail, status === 'cancelled' ? notify.cancellationAdmin(decided, dHijri, admin.email, note) : null]);
 
-  return { id: eventId, status, hasConflict };
+  return { id: eventId, status, hasConflict, bufferWaived: waivedBuffer.length > 0 };
 });
 
 // â”€â”€ Callable: admin edit of an existing booking's core fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
