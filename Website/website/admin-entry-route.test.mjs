@@ -7,7 +7,7 @@ test('post-login module and booking handoffs preserve only approved local target
 });
 
 test('approved admin deep links preserve exact destinations without opening redirects',()=>{
- for(const target of ['/admin-login?module=donations','/admin-login?module=niaz&tab=sponsors','/tools-automation/?tab=team','/admin-login?module=niaz&tools=notifications'])assert.equal(adminReturnTarget(target),target);
+ for(const target of ['/admin-login?module=donations','/admin-login?module=niaz&tab=sponsors','/admin-login?module=niaz&tab=workspace','/tools-automation/?tab=team','/admin-login?module=niaz&tools=notifications'])assert.equal(adminReturnTarget(target),target);
  for(const target of ['/admin-login?module=donations&redirect=https://evil.invalid','/admin-login?module=unknown','/admin-login?module=niaz&tab=settings','/tools-automation/?tab=team&redirect=evil'])assert.equal(adminReturnTarget(target),null);
 });
 test('assistant catalogue no longer offers protected login continuations',async()=>{
