@@ -5,16 +5,14 @@ const { projectPublicEvent } = require('./publicProjection');
 
 test('program extras: partial patches, trimming, empty rows dropped', () => {
   const out = sanitizeProgramExtras({
-    niazSponsor: { name: '  Ali Family ', phone: '0400' },
     reciters: [{ name: 'Reciter A', role: 'Noha' }, { name: '  ' }],
     expenses: [{ description: 'Food', amount: '$1,250.50' }, { description: 'Flowers', amount: 40 }]
   });
-  assert.deepEqual(out.niazSponsor, { name: 'Ali Family', phone: '0400', notes: '' });
   assert.equal(out.reciters.length, 1);
   assert.ok(out.reciters[0].id);
   assert.equal('volunteers' in out, false);
   assert.equal(expensesTotal(out.expenses), 1290.5);
-  assert.equal(sanitizeProgramExtras({ niazSponsor: { name: '' } }).niazSponsor, null);
+  assert.throws(() => sanitizeProgramExtras({ niazSponsor: { name: 'Ali Family' } }), /Niaz assignments/);
 });
 
 test('program extras: invalid amounts and oversized lists are rejected', () => {

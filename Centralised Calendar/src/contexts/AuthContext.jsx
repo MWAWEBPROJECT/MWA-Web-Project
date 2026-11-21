@@ -227,3 +227,6 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 }
+
+// Some shared booking views are also rendered outside the provider in isolated previews.
+export function useOptionalAuth(){return useContext(AuthContext);}

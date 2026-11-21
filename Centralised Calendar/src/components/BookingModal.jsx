@@ -20,7 +20,9 @@ import {
   PRAYER_OPTIONS, MAX_OFFSET_MINUTES, calculatePrayerTimes, prayerLabel, applyPrayerOffset, resolvePrayerSchedule
 } from '../utils/prayerTimes.js';
 import { ProgramExtrasSummary, ProgramExtrasEditor } from './ProgramExtras.jsx';
+import {NiazCardSponsorEditor} from './NiazCardSponsors.jsx';
 import NiazPublicSponsors from './NiazPublicSponsors.jsx';
+import {useOptionalAuth} from '../contexts/AuthContext.jsx';
 import SeriesDeletePrompt from './SeriesDeletePrompt.jsx';
 import { availableBookingTypes } from '../utils/bookingTypes.js';
 
@@ -59,6 +61,7 @@ const DEFAULT_REPEAT = { on: false, frequency: 'week', repeatEvery: 1, endMode: 
 export function BookingModalInner({
   open, onClose, venues, departments, editing: selectedBooking, isAdmin, hijriOverrides, onSaved, initialDate
 }) {
+  const adminSession=useOptionalAuth();
   const [sessionUser,setSessionUser]=useState(auth.currentUser);
   useEffect(()=>onAuthStateChanged(auth,setSessionUser),[]);
   const authenticated=!!sessionUser&&!sessionUser.isAnonymous&&(sessionUser.emailVerified||!!sessionUser.phoneNumber);
@@ -67,6 +70,7 @@ export function BookingModalInner({
   // The selected list item is a snapshot and may disappear from its filtered list after a decision.
   const [savedBooking, setSavedBooking] = useState(null);
   const editing = savedBooking || selectedBooking;
+  const canManageNiaz=!!isAdmin&&!!adminSession?.canAccess('niaz')&&!!editing&&editing.status==='confirmed'&&editing.visibility==='public';
   const [form, setForm] = useState(() => emptyForm(editing, initialDate, isAdmin));
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
@@ -99,6 +103,7 @@ export function BookingModalInner({
   // Admin-only MWA Programs extras saved in this dialog (the `editing` prop may lag the live snapshot).
   const [extras, setExtras] = useState(null);
   const [extrasSection, setExtrasSection] = useState(null);
+  const [niazRefreshKey,setNiazRefreshKey]=useState(0);
 
   useEffect(() => {
     setSavedBooking(null);
@@ -380,10 +385,10 @@ export function BookingModalInner({
 
   const showExtras = isAdmin && !!editing && isProgramType(departments, editing.departmentId);
   const extrasSummary = showExtras && (
-    <ProgramExtrasSummary event={editing} extras={extras} onManage={busy || locked ? undefined : setExtrasSection} />
+    <ProgramExtrasSummary event={editing} extras={extras} onManage={busy || locked ? undefined : setExtrasSection} canManageNiaz={canManageNiaz} niazRefreshKey={niazRefreshKey}/>
   );
   const extrasEditor = showExtras && extrasSection && (
-    <ProgramExtrasEditor
+    extrasSection==='niaz'?<NiazCardSponsorEditor eventId={editing.id} onClose={()=>setExtrasSection(null)} onSaved={()=>{setNiazRefreshKey(key=>key+1);onSaved?.();}}/>:<ProgramExtrasEditor
       eventId={editing.id} section={extrasSection}
       initial={(extras && extrasSection in extras ? extras : editing)[extrasSection]}
       onClose={() => setExtrasSection(null)}
@@ -431,7 +436,7 @@ export function BookingModalInner({
             )}
           </div>
           {extrasSummary}
-          {!editing.masked&&editing.status==='confirmed'&&(String(editing.departmentName||'').trim().toLowerCase()===PROGRAM_TYPE_NAME||isProgramType(departments,editing.departmentId))&&<NiazPublicSponsors eventId={editing.id} startAt={editing.startAt}/>}
+           {!isAdmin&&!editing.masked&&editing.status==='confirmed'&&(String(editing.departmentName||'').trim().toLowerCase()===PROGRAM_TYPE_NAME||isProgramType(departments,editing.departmentId))&&<NiazPublicSponsors eventId={editing.id} startAt={editing.startAt}/>}
           {ok && <div className="ok" role="status">{ok}</div>}
           {isAdmin && (
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>

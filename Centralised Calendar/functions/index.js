@@ -937,7 +937,7 @@ exports.createRecurringBooking = onCall({ cors: true, secrets: emailSecrets }, a
   return { seriesId, created: occurrences.length, conflicts, status };
 });
 
-// â”€â”€ Callable: admin-only program extras (Niaz sponsor, reciters, volunteers, expenses) â”€â”€
+// Callable: admin-only programme extras (reciters, volunteers, expenses).
 // Stored on the event doc for one occurrence; never included in public projections.
 exports.updateProgramExtras = onCall({ cors: true }, async (request) => {
   const admin = await requireAdmin(request.auth);
@@ -951,7 +951,6 @@ exports.updateProgramExtras = onCall({ cors: true }, async (request) => {
   if (!snap.exists) throw new HttpsError('not-found', 'Booking not found.');
   await ref.update({ ...patch, updatedAt: new Date().toISOString() });
   const parts = [];
-  if ('niazSponsor' in patch) parts.push(`Niaz sponsor: ${patch.niazSponsor ? patch.niazSponsor.name : 'none'}`);
   if ('reciters' in patch) parts.push(`${patch.reciters.length} reciter(s)`);
   if ('volunteers' in patch) parts.push(`${patch.volunteers.length} volunteer(s)`);
   if ('expenses' in patch) parts.push(`${patch.expenses.length} expense(s), total $${expensesTotal(patch.expenses).toFixed(2)}`);

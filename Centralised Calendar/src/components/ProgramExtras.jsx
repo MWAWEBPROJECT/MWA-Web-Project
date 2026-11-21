@@ -1,12 +1,9 @@
 import { useState } from 'react';
 import { updateProgramExtras } from '../services/eventsService.js';
+import {NiazCardSponsors} from './NiazCardSponsors.jsx';
 
 // Admin-only MWA Programs extras: shown as lists in the booking details/form, edited in a separate dialog.
 export const EXTRA_SECTIONS = {
-  niazSponsor: {
-    title: 'Legacy Niaz sponsor (private)', single: true,
-    fields: [['name', 'Sponsor name'], ['phone', 'Phone'], ['notes', 'Notes']]
-  },
   reciters: {
     title: 'Reciters', addLabel: 'Add reciter',
     fields: [['name', 'Name'], ['role', 'Recites (e.g. Quran, Noha, Majlis)'], ['notes', 'Notes']]
@@ -34,11 +31,12 @@ function describe(key, item) {
 }
 
 /** Read-only lists with a Manage button per section (admins only — callers must gate on isAdmin). */
-export function ProgramExtrasSummary({ event, extras, onManage }) {
+export function ProgramExtrasSummary({ event, extras, onManage, canManageNiaz=false, niazRefreshKey=0 }) {
   const data = { ...event, ...(extras || {}) };
   return (
     <div className="card program-extras" style={{ marginTop: 14 }}>
-      <div className="muted" style={{ marginBottom: 6 }}>Admin only — not shown to the public.</div>
+      <div className="muted" style={{ marginBottom: 6 }}>Admin details. Only consented sponsor names may appear publicly.</div>
+      {event.status==='confirmed'&&event.visibility==='public'&&<NiazCardSponsors eventId={event.id} canManage={canManageNiaz} onManage={onManage?()=>onManage('niaz'):undefined} refreshKey={niazRefreshKey}/>}
       {Object.entries(EXTRA_SECTIONS).map(([key, sec]) => {
         const items = sec.single ? (data[key] ? [data[key]] : []) : (data[key] || []);
         return (
@@ -50,7 +48,6 @@ export function ProgramExtrasSummary({ event, extras, onManage }) {
             {items.length
               ? <ul className="extras-list">{items.map((it, i) => <li key={it.id || i}>{describe(key, it)}</li>)}</ul>
               : <div className="muted">None added.</div>}
-            {key==='niazSponsor'&&<a href="/admin-login?module=niaz" target="_top">Open Niaz Administration for reviewed sponsorships</a>}
             {key === 'expenses' && items.length > 0 && <div><b>Total:</b> {money(total(items))}</div>}
           </div>
         );

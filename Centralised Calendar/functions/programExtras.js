@@ -1,5 +1,5 @@
 'use strict';
-// Admin-only "program extras" for MWA Programs bookings: Niaz sponsor, reciters, volunteers and
+// Admin-only "program extras" for MWA Programs bookings: reciters, volunteers and
 // expenses. They live on the event document (admin-read only per firestore.rules), are edited only
 // through the updateProgramExtras callable, and are never part of the public projection.
 
@@ -10,12 +10,6 @@ const text = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 function itemId(v, i) {
   const s = text(v, 40).replace(/[^A-Za-z0-9_-]/g, '');
   return s || `i${Date.now().toString(36)}${i}`;
-}
-
-function sanitizeSponsor(v) {
-  if (!v || typeof v !== 'object') return null;
-  const s = { name: text(v.name, LIMITS.name), phone: text(v.phone, LIMITS.short), notes: text(v.notes, LIMITS.notes) };
-  return s.name ? s : null;
 }
 
 function sanitizeList(list, label, mapItem) {
@@ -41,8 +35,8 @@ function parseAmount(v) {
  */
 function sanitizeProgramExtras(input) {
   const src = input && typeof input === 'object' ? input : {};
+  if ('niazSponsor' in src) throw new Error('Use Niaz assignments to manage sponsors for this event.');
   const out = {};
-  if ('niazSponsor' in src) out.niazSponsor = sanitizeSponsor(src.niazSponsor);
   if ('reciters' in src) {
     out.reciters = sanitizeList(src.reciters, 'Reciters', x => ({
       name: text(x.name, LIMITS.name), role: text(x.role, LIMITS.short), notes: text(x.notes, LIMITS.notes)
@@ -65,4 +59,4 @@ function sanitizeProgramExtras(input) {
 const expensesTotal = (expenses) =>
   Math.round((expenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0) * 100) / 100;
 
-module.exports = { sanitizeProgramExtras, expensesTotal, PROGRAM_EXTRA_KEYS: ['niazSponsor', 'reciters', 'volunteers', 'expenses'] };
+module.exports = { sanitizeProgramExtras, expensesTotal, PROGRAM_EXTRA_KEYS: ['reciters', 'volunteers', 'expenses'] };
