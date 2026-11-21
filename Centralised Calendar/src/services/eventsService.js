@@ -5,6 +5,7 @@
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase/firebase';
 import { collectAdminEventPages } from './adminEventPages.mjs';
+import { bookingDecisionPayload } from './bookingDecisionPayload.mjs';
 
 /**
  * Public submission. Always lands as status "pending" — the server decides
@@ -35,7 +36,7 @@ export async function verifyBookingMobile(payload) {
 /** Admin decision: confirm / reject / cancel, with optional visibility + note. */
 export async function decideBooking({ eventId, status, visibility, note, expectedStatus, requireNoConflict }) {
   const fn = httpsCallable(functions, 'decideBooking');
-  const res = await fn({ eventId, status, visibility, note, expectedStatus, requireNoConflict });
+  const res = await fn(bookingDecisionPayload({ eventId, status, visibility, note, expectedStatus, requireNoConflict }));
   return res.data;
 }
 

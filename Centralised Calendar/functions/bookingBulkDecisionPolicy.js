@@ -1,5 +1,6 @@
 function checkBulkRequest(expectedStatus, HttpsError) {
-  if (expectedStatus !== undefined && expectedStatus !== 'pending') throw new HttpsError('invalid-argument', 'Only pending bookings may be selected for a bulk decision.');
+  // Callable transport can encode an omitted optional field as null.
+  if (expectedStatus != null && expectedStatus !== 'pending') throw new HttpsError('invalid-argument', 'Only pending bookings may be selected for a bulk decision.');
 }
 function checkPending(before, expectedStatus, HttpsError) {
   if (expectedStatus && before?.status !== expectedStatus) throw new HttpsError('failed-precondition', 'This booking is no longer pending. Refresh the list.');
