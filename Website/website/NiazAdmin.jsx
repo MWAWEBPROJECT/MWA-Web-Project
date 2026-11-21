@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Users,CalendarDays,ClipboardList,Inbox,Repeat2,Bell,Settings,Download,ExternalLink,ShieldCheck,Info,Search,Plus,FileSpreadsheet,Filter,ArrowUpDown,AlertCircle} from 'lucide-react';
+import {Users,CalendarDays,ClipboardList,Inbox,Repeat2,Bell,Settings,Download,ExternalLink,ShieldCheck,Info,Search,Plus,FileSpreadsheet,Filter,ArrowUpDown,AlertCircle,ListChecks} from 'lucide-react';
 import {useAuth} from '@calendar/contexts/AuthContext.jsx';
 import AdminBackButton from '@calendar/components/AdminBackButton.jsx';
 import {goAdminBack} from '@calendar/utils/adminNavigation.mjs';
@@ -7,16 +7,17 @@ import {niazApi,importColumns,importMapping,mapImportRows,importTemplate,readImp
 import './registrations.css';
 import './niaz.css';
 import NiazEventEditor from './NiazEventEditor.jsx';
+import NiazAssignmentWorkspace from './NiazAssignmentWorkspace.jsx';
 const dayKey=value=>value?new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value)):'';
 const empty=()=>({name:'',email:'',phone:'',publicConsent:false,active:true,notes:'',revision:0});
-const description={eois:'Sponsorship Requests',dashboard:'Monthly Programme Dashboard',programmes:'Recurring Commitments',assignments:'Sponsorship History',sponsors:'Sponsor Directory',notifications:'Notification delivery status'};
-const sectionIcons={sponsors:Users,dashboard:CalendarDays,assignments:ClipboardList,eois:Inbox,programmes:Repeat2,notifications:Bell};
-const sectionHelp={sponsors:'Manage sponsor contacts, consent and import records.',dashboard:'Review monthly sponsorship and arrangement coverage.',assignments:'Read-only records of event sponsorships and changes. Use the monthly dashboard to edit current arrangements.',eois:'Review verified-contact offers independently for each programme.',programmes:'Manage yearly programme commitments. Review next-year occurrences before confirming them.',notifications:'Review queued notices and attention records. Acknowledgment is not resolution.'};
+const description={eois:'Sponsorship Requests',dashboard:'Monthly Programme Dashboard',workspace:'Assign Sponsors',programmes:'Recurring Commitments',assignments:'Sponsorship History',sponsors:'Sponsor Directory',notifications:'Notification delivery status'};
+const sectionIcons={sponsors:Users,dashboard:CalendarDays,workspace:ListChecks,assignments:ClipboardList,eois:Inbox,programmes:Repeat2,notifications:Bell};
+const sectionHelp={sponsors:'Manage sponsor contacts, consent and import records.',dashboard:'Review monthly sponsorship and arrangement coverage.',workspace:'Match one or more public MWA programmes with active sponsors.',assignments:'Read-only records of event sponsorships and changes. Use the monthly dashboard to edit current arrangements.',eois:'Review verified-contact offers independently for each programme.',programmes:'Manage yearly programme commitments. Review next-year occurrences before confirming them.',notifications:'Review queued notices and attention records. Acknowledgment is not resolution.'};
 const recordStatus=row=>row.proposal?'Pending review':row.state||row.status|| (row.events?.some(event=>event.status==='pending')?'Pending':row.events?.every(event=>event.status==='approved')?'Approved':'Programme');
 export default function NiazAdmin(){
  const notificationTools=new URLSearchParams(location.search).get('tools')==='notifications';
  const requestedTab=new URLSearchParams(location.search).get('tab');
- const initialTab=notificationTools?'notifications':['eois','dashboard','programmes','assignments','sponsors'].includes(requestedTab)?requestedTab:'eois';
+ const initialTab=notificationTools?'notifications':['eois','dashboard','workspace','programmes','assignments','sponsors'].includes(requestedTab)?requestedTab:'eois';
  const session=useAuth(),allowed=session.isAdmin&&(!notificationTools||session.canAccess('tools-automation'))&&['niaz','niaz-read','niaz-finance'].some(id=>session.canAccess(id));
  const [permissions,setPermissions]=useState(null),[tab,setTab]=useState(initialTab),[rows,setRows]=useState([]),[next,setNext]=useState(null),[draft,setDraft]=useState(null),[pageDirty,setDirty]=useState(false),[editorDirty,setEditorDirty]=useState({}),[query,setQuery]=useState(''),[status,setStatus]=useState(''),[year,setYear]=useState('');
  const importFile=useRef(null);
@@ -44,16 +45,16 @@ export default function NiazAdmin(){
  useEffect(()=>{
   setEditorDirty({});
   generation.current++;dataUid.current=session.user?.uid;setRows([]);setPermissions(null);setDraft(null);setDetail(null);setPreview(null);setImportData(null);setError('');setNotice('');setBusy(false);setDirty(false);setTab(initialTab);setQuery('');setYear('');setStatus('');setEvents([]);setDate('');setSettings({notificationEnabled:false,threeDayFollowup:false,coordinatorEmails:[]});setAssignDraft({sponsorId:'',type:'one_time',role:'joint',seriesId:'',inKind:'',notes:'',revision:0});
-  if(allowed)run(async()=>{const p=await niazApi('/session');if(!active.current)return;setPermissions(p);await load(initialTab);});
+  if(allowed)run(async()=>{const p=await niazApi('/session');if(!active.current)return;setPermissions(p);if(initialTab!=='workspace')await load(initialTab);});
   return()=>{generation.current++;};
  },[allowed,session.user?.uid]);
  useEffect(()=>{window.mwaPageReady?.();},[]);
  useEffect(()=>{const warn=event=>{if(dirty){event.preventDefault();event.returnValue='';}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
  function leave(){if(dirty&&!confirm('Leave this editor? Unsaved changes will be lost.'))return false;setDirty(false);setEditorDirty({});setDraft(null);setDetail(null);setImportData(null);setPreview(null);return true;}
- function changeTab(value){if(!leave())return;setExpandedId(null);setQuery('');setYear('');setStatus('');setFrom('');setTo('');generation.current++;setTab(value);setRows([]);setNext(null);setNotice('');run(()=>load(value));}
+ function changeTab(value){if(!leave())return;setExpandedId(null);setQuery('');setYear('');setStatus('');setFrom('');setTo('');generation.current++;setTab(value);setRows([]);setNext(null);setNotice('');if(value!=='workspace')run(()=>load(value));}
  async function openEvent(eventId){const ticket=generation.current;const value=await niazApi('/event?eventId='+encodeURIComponent(eventId));if(active.current&&ticket===generation.current)setDetail(value);}
  async function exportRows(){
-  const sheets={};for(const key of Object.keys(description)){
+  const sheets={};for(const key of Object.keys(description).filter(key=>key!=='workspace')){
    const all=[];let after='';for(let page=0;page<100;page++){const value=await niazApi('/'+key+(key==='dashboard'?'?month='+month:after?'?after='+encodeURIComponent(after):''));all.push(...value.items);after=value.next;if(!after)break;if(page===99)throw Error('Export exceeds 10,000 records. Narrow the report.');}
    sheets[description[key]]=all;
   }
@@ -78,13 +79,14 @@ export default function NiazAdmin(){
    {notificationTools&&<button type="button" disabled={busy} aria-pressed={tab==='settings'} onClick={()=>{if(!leave())return;setTab('settings');setRows([]);run(async()=>setSettings(await niazApi('/settings')));}}><Settings size={18} aria-hidden="true"/>Notification settings</button>}</nav>
   {!notificationTools&&<div className="registration-actions niaz-toolbar mwa-module-menu"><button className="btn alt" disabled={busy} onClick={()=>run(exportRows)}><Download size={16} aria-hidden="true"/>Export register</button><a className="text-link" href="/niaz/">Sponsor EOI / own history<ExternalLink size={15} aria-hidden="true"/></a></div>}
   {error&&<p className="niaz-message niaz-error" role="alert"><AlertCircle size={18} aria-hidden="true"/>{error}</p>}{notice&&<p className="niaz-message" role="status">{notice}</p>}
-  {!draft&&!detail&&!importData&&<div className="niaz-section-heading"><div><h2>{tab==='settings'?'Notification settings':description[tab]}</h2><p>{tab==='settings'?'Only the Super Admin can change delivery settings. Saving is not a delivery test.':sectionHelp[tab]}</p></div>{tab!=='settings'&&<span className="niaz-badge">{filtered.length} loaded record{filtered.length===1?'':'s'}</span>}</div>}
+  {!draft&&!detail&&!importData&&<div className="niaz-section-heading"><div><h2>{tab==='settings'?'Notification settings':description[tab]}</h2><p>{tab==='settings'?'Only the Super Admin can change delivery settings. Saving is not a delivery test.':sectionHelp[tab]}</p></div>{!['settings','workspace'].includes(tab)&&<span className="niaz-badge">{filtered.length} loaded record{filtered.length===1?'':'s'}</span>}</div>}
+  {tab==='workspace'&&!detail&&<NiazAssignmentWorkspace manage={permissions?.manage} onEditEvent={eventId=>run(()=>openEvent(eventId))} onDirty={value=>markEditor('assignment-workspace',value)}/>}
   {tab==='settings'&&<form className="registration-editor" onSubmit={e=>{e.preventDefault();run(async()=>{setSettings(await niazApi('/settings',settings));setDirty(false);setNotice('Notification settings saved. Activation does not prove email delivery.');});}}>
    <fieldset disabled={!session.isOwner||busy}><legend>Super Admin notification settings</legend><label>Coordinator emails (one per line; active Niaz permission required)<textarea value={settings.coordinatorEmails?.join('\n')||''} onChange={e=>{setSettings({...settings,coordinatorEmails:e.target.value.split('\n').map(value=>value.trim()).filter(Boolean)});setDirty(true);}}/></label>
     {[['notificationEnabled','Enable configured Niaz notification delivery'],['threeDayFollowup','Allow opted-in three-day sponsor follow-ups']].map(([key,label])=><label className="registration-check" key={key}><input type="checkbox" checked={settings[key]===true} onChange={e=>{setSettings({...settings,[key]:e.target.checked});setDirty(true);}}/>{label}</label>)}<div className="registration-actions"><button type="button" className="btn alt" onClick={()=>{setSettings({...settings,coordinatorEmails:[],notificationEnabled:false,threeDayFollowup:false});setDirty(true);}}>Clear</button><button type="button" className="btn alt" onClick={()=>changeTab('eois')}>Cancel</button><button className="btn">Save notification settings</button></div>
    </fieldset><p>Delivery uses the existing connected Gmail mailbox. No SMS sender or additional payment processor is introduced.</p>
   </form>}
-  {tab!=='settings'&&!draft&&!detail&&!importData&&<>
+  {!['settings','workspace'].includes(tab)&&!draft&&!detail&&!importData&&<>
    {tab==='dashboard'&&<form className="registration-editor" onSubmit={e=>{e.preventDefault();run(()=>load('dashboard'));}}><label>Programme month (Sydney)<input type="month" required value={month} onChange={e=>setMonth(e.target.value)}/></label><div className="registration-actions"><button type="button" className="btn alt" onClick={()=>setMonth('')}>Clear</button><button type="button" className="btn alt" onClick={()=>changeTab('eois')}>Cancel</button><button className="btn alt" disabled={busy}>Refresh monthly dashboard</button></div><p>Use search for compatible badges such as No sponsor, EOI pending, MWA arranged or Arrangement confirmed.</p></form>}
    <div className="registration-actions niaz-directory-tools">{tab==='assignments'&&<button className="btn alt" onClick={()=>run(async()=>{await niazApi('/export-audit',{reports:['Filtered sponsorship history']});download(await workbook({'Sponsorship History':filtered}),'MWA Sponsorship History.xlsx');})}><Download size={16}/>Export filtered history</button>}<button className="btn alt" type="button" aria-label="Filter records" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}><Filter size={17}/>Filters</button>
    {tab==='sponsors'&&<>{permissions?.manage&&<><button className="btn" onClick={()=>setDraft(empty())}><Plus size={16}/>Create</button><button className="btn alt" onClick={()=>run(async()=>download(await importTemplate(),'mwa-niaz-import-template.xlsx'))}><FileSpreadsheet size={16}/>Download Import Template</button><button className="btn alt" onClick={()=>importFile.current?.click()}>Import</button><input ref={importFile} hidden type="file" accept=".xlsx,.csv" onChange={e=>{const file=e.target.files[0];e.target.value='';if(file)run(async()=>{const value=await readImport(file);setImportData(value);setMapping(importMapping(value.headers));});}}/></>}<button className="btn alt" disabled={busy} onClick={()=>run(async()=>{await niazApi('/export-audit',{reports:['Filtered sponsor directory']});download(await workbook({'Sponsors':filtered}),'MWA Niaz Sponsors.xlsx');})}><Download size={16}/>Export sponsors</button></>}</div>

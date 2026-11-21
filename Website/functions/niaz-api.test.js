@@ -24,6 +24,13 @@ function database(seed={}){
 const actor={uid:'synthetic-admin',email:'synthetic@example.org'};
 const event={title:'Synthetic programme',status:'confirmed',visibility:'public',departmentName:'MWA Programs',startAt:'2027-01-11T08:00:00.000Z',endAt:'2027-01-11T10:00:00.000Z',seriesId:'series1'};
 const person={uid:null,email:'demo@example.org',phone:'',ownerKey:'verified-contact-1'};
+test('assignment event index exposes only eligible public programme fields',async()=>{
+ const db=database({'events/public':{...event,contactEmail:'private@example.org'},'events/private':{...event,visibility:'private'},'events/booking':{...event,departmentName:'Events Booking'}});
+ const result=await A.assignmentEvents(db);
+ assert.deepEqual(result.items.map(row=>row.id),['public']);
+ assert.deepEqual(Object.keys(result.items[0]).sort(),['audience','id','seriesId','startAt','title']);
+ assert.equal(JSON.stringify(result).includes('private@example.org'),false);
+});
 test('Sponsor contact import accepts name-only rows and skips existing email contacts without changing assignments',async()=>{
  const db=database();
  const rows=[{name:'Name Only',email:'',phone:'',notes:'',publicConsent:false,active:true},{name:'Phone Sponsor',email:'person@example.org',phone:'0412345678',notes:'',publicConsent:false,active:true}];
@@ -443,6 +450,11 @@ test('Event plan atomically retains joint sponsors under MWA and rejects stale e
  await assert.rejects(P.saveEventPlan(db,input,actor),/changed/);
  await P.saveEventPlan(db,{...input,revision:1,baseline:[{id:'a',revision:2}],assignments:[]},actor);assert.equal(db.store.get('niazSponsorships/a').status,'cancelled');assert.ok(db.store.has('niazSponsors/s'));
  const before=JSON.stringify([...db.store]);await assert.rejects(P.saveEventPlan(db,{...input,revision:2,baseline:[],assignments:[{sponsorId:'missing',type:'one_time'}]},actor),/active/);assert.equal(JSON.stringify([...db.store]),before);
+});
+test('Coordinator assignment leaves finance target unchanged when not supplied',async()=>{
+ const P=require('./niaz-event-plan');const db=database({'events/event1':event,'niazSponsors/s':{active:true},'niazEventCoverage/event1':{revision:3,fundsRequiredCents:25000}});
+ await P.saveEventPlan(db,{eventId:'event1',revision:3,mwaArranged:false,arrangementConfirmed:false,acceptExtraEOIs:false,notes:'',baseline:[],assignments:[{sponsorId:'s',type:'one_time',role:'sole'}]},actor);
+ assert.equal(db.store.get('niazEventCoverage/event1').fundsRequiredCents,25000);
 });
 test('Discretionary EOI creates an active sponsor with explicit reminder preference and resolves at approval',async()=>{
  const db=database({'events/event1':event});const request=await A.submitEOI(db,{name:'Synthetic',eventIds:['event1'],requestId:'discretion',type:'discretion',publicConsent:true,optionalReminders:true},person);

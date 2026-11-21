@@ -6,10 +6,11 @@ async function saveEventPlan(db,input,actor){
  if(typeof input.mwaArranged!=='boolean'||typeof input.arrangementConfirmed!=='boolean'||typeof input.acceptExtraEOIs!=='boolean')throw M.fault(400,'Choose event arrangement settings.');
  if(!Array.isArray(input.assignments)||!Array.isArray(input.baseline)||input.assignments.length>100||input.baseline.length>100)throw M.fault(400,'Review at most 100 sponsors for this event.');
  const rows=input.assignments.map(row=>({...M.assignment(row),id:row.id?M.id(row.id):null,sponsorId:M.id(row.sponsorId),revision:row.revision||0}));
- if(rows.some(row=>!['one_time','permanent','cash_donation','annual'].includes(row.type)))throw M.fault(400,'Choose a final sponsorship type.');
+ if(rows.some(row=>!['one_time','permanent','cash_donation','annual','discretion'].includes(row.type)))throw M.fault(400,'Choose a final sponsorship type.');
  if(new Set(rows.map(r=>r.sponsorId)).size!==rows.length)throw M.fault(400,'Each sponsor can be assigned only once.');
  if(!input.mwaArranged&&!rows.length)throw M.fault(400,'Assign a sponsor or choose MWA Arranged.');
  const notes=M.text(input.notes||'','internal arrangement notes',2000);
+ const hasFundsRequired=Object.hasOwn(input,'fundsRequiredCents');
  const fundsRequiredCents=input.fundsRequiredCents==null?null:M.amount(input.fundsRequiredCents);
  return db.runTransaction(async tx=>{
   const eventRef=db.doc('events/'+eventId),coverageRef=db.doc('niazEventCoverage/'+eventId);
@@ -40,7 +41,7 @@ async function saveEventPlan(db,input,actor){
    tx.set(ref,{...previous,...value,eventId,role:input.mwaArranged||rows.length>1?'joint':row.role,origin:previous?.origin||'coordinator',status:'approved',revision:(previous?.revision||0)+1,year:Number(dateKey(event.startAt).slice(0,4)),createdAt:previous?.createdAt||stamp,approvedAt:previous?.approvedAt||stamp,approvedBy:previous?.approvedBy||actor.uid,updatedAt:stamp});
    if(programmeRef&&!programme.exists)tx.create(programmeRef,{seriesId:row.seriesId,sponsorId:row.sponsorId,status:'active',revision:1,createdAt:stamp,updatedAt:stamp,reason:'Coordinator assignment; future annual occurrences require review.'});
   }
-  tx.set(coverageRef,{mwaArranged:input.mwaArranged,arrangementConfirmed:input.arrangementConfirmed,acceptExtraEOIs:input.acceptExtraEOIs,notes,fundsRequiredCents,eventReviewRequired:false,revision:(coverage.revision||0)+1,updatedAt:stamp},{merge:true});
+  tx.set(coverageRef,{mwaArranged:input.mwaArranged,arrangementConfirmed:input.arrangementConfirmed,acceptExtraEOIs:input.acceptExtraEOIs,notes,fundsRequiredCents:hasFundsRequired?fundsRequiredCents:(coverage.fundsRequiredCents??null),eventReviewRequired:false,revision:(coverage.revision||0)+1,updatedAt:stamp},{merge:true});
   require('./niaz-api').audit(db,tx,actor,'niaz.event_plan_saved',eventId,{mwaArranged:input.mwaArranged,sponsorIds:rows.map(row=>row.sponsorId),removedAssignmentIds:existing.docs.filter(doc=>!rows.some(row=>row.id===doc.id)).map(doc=>doc.id)});
   return {ok:true};
  });

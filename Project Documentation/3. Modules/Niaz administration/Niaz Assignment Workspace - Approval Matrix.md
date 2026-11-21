@@ -1,6 +1,6 @@
 # Niaz Assignment Workspace — approval brief
 
-**Status:** Proposed for review. This two-list workspace is not implemented. The event-card sponsor search is a separate first-step change.
+**Status:** Approved by the user on 21 November 2026 and implemented in the Niaz Administration “Assign Sponsors” tab. The event-card sponsor search was the separate first-step change.
 
 ## Purpose
 
@@ -31,11 +31,11 @@ Give the Niaz Coordinator one workspace to find a public MWA programme and an ac
 | Access and audit | Niaz management permission required to assign/edit; Niaz read-only permission can view. | All writes use server-side checks and log actor, event, sponsor, prior/new role and time. |
 | Mobile | Two switchable tabs, Events and Sponsors, with a persistent selection summary and Save action. | Same rules and result detail as desktop side-by-side lists. |
 
-## Decisions requested before implementation
+## Approved decisions
 
 1. Should a multi-event assignment be limited to **25 events per save**, and a single-event assignment to **25 sponsors per save**, with further selections handled in another operation?
 2. When an event has a sole sponsor, should adding another sponsor require a confirmation that changes the existing role to **joint**? Recommended: yes.
 3. Should the default assignment type be **This event only**, with Permanent available only when the event belongs to a stable series? Recommended: yes.
 4. Should editing a permanent commitment from this workspace affect only the selected occurrence, leaving future-year commitment changes in Recurring Commitments? Recommended: yes.
 
-After approval, implement this as a Niaz Administration workspace using the existing Sponsor Directory, shared programme calendar, Niaz assignment/coverage records and permission checks. Do not copy legacy `events.niazSponsor` into new assignments automatically.
+Implemented using the Sponsor Directory, shared programme calendar, Niaz assignment/coverage records and permission checks. The old event sponsor field is not copied into assignments. An audit on 21 November 2026 found no production event documents carrying that field.

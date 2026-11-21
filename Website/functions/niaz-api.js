@@ -398,14 +398,9 @@ async function importStep(db,jobId,offset,actor){
   return {offset:next,state};
  });
 }
-async function legacyPreview(db,year){
- M.annualYear(year);
- const events=await db.collection('events').where('startAt','>=',new Date(midnight(year+'-01-01')).toISOString()).where('startAt','<',new Date(midnight((year+1)+'-01-01')).toISOString()).orderBy('startAt').limit(1001).get();
- if(events.size>1000)throw M.fault(413,'Legacy review exceeds 1,000 events. Use a narrower reviewed source export.');
- return {items:events.docs.filter(doc=>doc.data().niazSponsor).map(doc=>{
-  const event=doc.data(),legacy=event.niazSponsor;
-  return {name:legacy.name||'',phone:legacy.phone||'',email:'',eventId:doc.id,eventDate:dateKey(event.startAt),type:'one_time',seriesId:event.seriesId||'',role:'joint',publicConsent:false,notes:legacy.notes||'',memberId:''};
- })};
+async function assignmentEvents(db,after=''){
+ const page=await list(db,'events',after);
+ return {items:page.items.filter(event=>M.eligible(event,event.id)&&event.visibility==='public').map(event=>({id:event.id,title:event.title,startAt:event.startAt,audience:event.audience||'family',seriesId:event.seriesId||''})),next:page.next};
 }
 async function dashboard(db,month,finance){
  if(typeof month!=='string'||!validDate(month+'-01'))throw M.fault(400,'Choose a valid programme month.');
@@ -471,7 +466,7 @@ async function handle(req,res,{db,getAuth,origins}){
    if(path==='/event')return res.json(await eventDetail(db,req.query.eventId,{finance}));
    if(path==='/settings')return res.json((await db.doc('_niazPrivate/settings').get()).data()||{notificationEnabled:false,threeDayFollowup:false,revision:0});
    if(path==='/notifications')return res.json(await list(db,'_niazOutbox',req.query.after||''));
-   if(path==='/legacy-preview')return res.json(await legacyPreview(db,Number(req.query.year)));
+   if(path==='/assignment-events')return res.json(await assignmentEvents(db,req.query.after||''));
    if(path==='/dashboard')return res.json(await dashboard(db,req.query.month,finance));
   }
   if(path==='/export-audit'&&req.method==='POST'){
@@ -498,4 +493,4 @@ async function handle(req,res,{db,getAuth,origins}){
   throw M.fault(404,'Niaz action not found.');
  }catch(error){console.error('Niaz request failed',{status:error.status||503,message:error.status?error.message:'Internal request failure'});return res.status(error.status||503).json({error:error.status?error.message:'Niaz is temporarily unavailable. No success is assumed; refresh before retrying.'});}
 }
-module.exports={handle,list,contextualList,saveSponsor,importContacts,assign,eventDetail,saveCoverage,submitEOI,decideEOI,proposeAlternative,own,previewImport,importStep,identity,audit,queue,legacyPreview,editOwnEOI,dashboard,eoiList,acknowledgeAttention};
+module.exports={handle,list,contextualList,saveSponsor,importContacts,assign,eventDetail,saveCoverage,submitEOI,decideEOI,proposeAlternative,own,previewImport,importStep,identity,audit,queue,assignmentEvents,editOwnEOI,dashboard,eoiList,acknowledgeAttention};

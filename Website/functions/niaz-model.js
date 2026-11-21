@@ -26,7 +26,7 @@ function assignment(input){
  if(type==='permanent'&&!seriesId)throw fault(400,'Permanent sponsorship requires a stable calendar series reference.');
  return {type,seriesId,role:choice(input.role||'joint',['sole','joint','contributor'],'a sponsor role'),inKind:text(input.inKind||'','additional offers / requests',1000),notes:text(input.notes||'','arrangement notes',2000)};
 }
-function eligible(event,eventId){return !!publicEvent(event,eventId)&&String(event.departmentName||'').trim().toLowerCase()==='mwa programs';}
+function eligible(event,eventId){return event?.visibility==='public'&&!!publicEvent(event,eventId)&&String(event.departmentName||'').trim().toLowerCase()==='mwa programs';}
 function annualYear(value){if(!Number.isInteger(value)||value<2020||value>2100)throw fault(400,'Choose a valid calendar year.');return value;}
 function amount(value){if(!Number.isSafeInteger(value)||value<0||value>100000000)throw fault(400,'Enter a valid non-negative AUD amount in cents.');return value;}
 function badges(assignments,coverage={}){
