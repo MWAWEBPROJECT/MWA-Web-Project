@@ -599,20 +599,24 @@ exports.submitBooking = onCall({ cors: true, secrets: [...emailSecrets, BOOKING_
 // â”€â”€ Callable: admin confirm/reject/cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (request) => {
   const admin = await requireAdmin(request.auth);
-  const { eventId, status, visibility, note } = request.data || {};
+  const { eventId, status, visibility, note, expectedStatus, requireNoConflict } = request.data || {};
+  const bulkPolicy = require('./bookingBulkDecisionPolicy');
   if (!eventId || !STATUSES.includes(status) || status === 'pending') {
     throw new HttpsError('invalid-argument', 'eventId and a valid target status are required.');
   }
+  bulkPolicy.checkBulkRequest(expectedStatus, HttpsError);
 
   const ref = db.collection('events').doc(eventId);
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError('not-found', 'Booking not found.');
   const before = snap.data();
+  bulkPolicy.checkPending(before, expectedStatus, HttpsError);
 
   let hasConflict = before.hasConflict;
   let conflictWith = before.conflictWith || [];
   if (status === 'confirmed') {
     const overlaps = await findOverlaps(before.venueId, before.startAt, before.endAt, eventId);
+    bulkPolicy.checkConflict(overlaps, requireNoConflict, HttpsError);
     if(overlaps.some(o=>o.reason!=='Existing booking at this venue'))throw new HttpsError('failed-precondition','This booking conflicts with the venue availability policy. Change the venue, audience or time before confirming.');
     hasConflict = overlaps.length > 0;
     conflictWith = overlaps.map(o => o.id);
@@ -633,7 +637,13 @@ exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
   const explicitVisibility = sanitizeVisibility(visibility);
   if (explicitVisibility) patch.visibility = explicitVisibility;
 
-  await ref.update(patch);
+  if (expectedStatus) {
+    await db.runTransaction(async tx => {
+      const latest = (await tx.get(ref)).data();
+      bulkPolicy.checkUnchanged(latest, before, expectedStatus, HttpsError);
+      tx.update(ref, patch);
+    });
+  } else await ref.update(patch);
   await refreshConflictNeighborhood([{ id: eventId, before, after: { ...before, ...patch } }]);
   await writeAudit({
     entityType: 'event', entityId: eventId, action: `status_${status}`,

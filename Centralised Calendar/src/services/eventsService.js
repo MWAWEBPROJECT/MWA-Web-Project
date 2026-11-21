@@ -33,9 +33,9 @@ export async function verifyBookingMobile(payload) {
 }
 
 /** Admin decision: confirm / reject / cancel, with optional visibility + note. */
-export async function decideBooking({ eventId, status, visibility, note }) {
+export async function decideBooking({ eventId, status, visibility, note, expectedStatus, requireNoConflict }) {
   const fn = httpsCallable(functions, 'decideBooking');
-  const res = await fn({ eventId, status, visibility, note });
+  const res = await fn({ eventId, status, visibility, note, expectedStatus, requireNoConflict });
   return res.data;
 }
 

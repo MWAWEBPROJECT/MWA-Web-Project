@@ -1,0 +1,5 @@
+.booking-bulk-review,.booking-bulk-results{margin:14px 0;padding:18px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--foreground)}
+.booking-bulk-review h3{margin:0 0 6px;font-size:18px}.booking-bulk-review p,.booking-bulk-results p{margin:6px 0 12px;color:var(--muted-foreground)}
+.booking-bulk-review ul,.booking-bulk-results ul{margin:8px 0 14px;padding-left:22px;max-height:180px;overflow:auto}.booking-bulk-review li,.booking-bulk-results li{margin:4px 0;white-space:normal;overflow-wrap:anywhere}
+.booking-bulk-review label{display:grid;gap:6px;max-width:600px;font-weight:600}.booking-bulk-review input{min-height:42px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground);font:inherit}
+.booking-bulk-review .bar{margin:16px 0 0}.booking-bulk-results{border-left:4px solid var(--accent)}
