@@ -24,6 +24,16 @@ function database(seed={}){
 const actor={uid:'synthetic-admin',email:'synthetic@example.org'};
 const event={title:'Synthetic programme',status:'confirmed',visibility:'public',departmentName:'MWA Programs',startAt:'2027-01-11T08:00:00.000Z',endAt:'2027-01-11T10:00:00.000Z',seriesId:'series1'};
 const person={uid:null,email:'demo@example.org',phone:'',ownerKey:'verified-contact-1'};
+test('Sponsor contact import accepts name-only rows and skips existing email contacts without changing assignments',async()=>{
+ const db=database();
+ const rows=[{name:'Name Only',email:'',phone:'',notes:'',publicConsent:false,active:true},{name:'Phone Sponsor',email:'person@example.org',phone:'0412345678',notes:'',publicConsent:false,active:true}];
+ const first=await A.importContacts(db,rows,actor);
+ assert.deepEqual(first.rows.map(row=>row.status),['created','created']);
+ const second=await A.importContacts(db,[rows[1],{name:'',email:'',phone:'',publicConsent:false}],actor);
+ assert.deepEqual(second.rows.map(row=>row.status),['duplicate','error']);
+ assert.equal([...db.store.keys()].filter(key=>key.startsWith('niazSponsors/')).length,2);
+ assert.equal([...db.store.keys()].filter(key=>key.startsWith('niazSponsorships/')).length,0);
+});
 test('Directory revisions, contact duplicates and sole conflicts cannot silently overwrite',async()=>{
  const db=database({'events/event1':event,'events/event2':event});
  const s=await A.saveSponsor(db,{name:'Demo',email:'demo@example.org',publicConsent:false,revision:0},actor);

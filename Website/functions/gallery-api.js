@@ -18,7 +18,7 @@ function metadata(input){
  const result={};for(const [key,max] of Object.entries({title:160,caption:1000,event:160,category:80,tags:400})){
   if(typeof input[key]!=='string'||input[key].length>max)fail(400,'Check photograph '+key+'.');result[key]=input[key].trim();
  }
- if(!result.title)fail(400,'Enter a photograph title.');
+ if(!result.category)fail(400,'Choose a photograph category.');
  if(!['public','hidden'].includes(input.visibility))fail(400,'Choose a valid visibility.');result.visibility=input.visibility;
  if(input.date!==null&&input.date!==''){
   const parsed=typeof input.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(input.date)?new Date(input.date+'T12:00:00Z'):null;

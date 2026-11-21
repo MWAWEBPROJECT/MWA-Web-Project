@@ -14,7 +14,7 @@
 .niaz-context>svg,.niaz-verified>svg{flex-shrink:0;margin-top:3px;color:var(--accent)}
 .niaz-context p{margin:4px 0;color:var(--muted)}
 .niaz-context>p{margin:0}
-.niaz-error{border-left-color:var(--danger,#b94141)}
+.niaz-error{border-left-color:var(--danger,#b94141);color:var(--danger,#b94141);display:flex;align-items:flex-start;gap:9px;font-weight:600}.niaz-error svg{flex:none;margin-top:2px}.niaz-import-error{color:var(--danger,#b94141);font-weight:600}
 .niaz-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:28px 0 16px}
 .niaz-tabs button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-size:13px;cursor:pointer;min-height:44px}
 .niaz-tabs button[aria-pressed=true]{background:var(--primary);border-color:var(--primary);color:var(--on-primary,#fff)}

@@ -12,48 +12,46 @@ export async function niazApi(path,body,verification){
  if(auth.currentUser?.uid!==user?.uid)throw Error('Your session changed. Refresh Niaz before continuing.');
  if(!response.ok)throw Error(data.error||'Niaz could not complete this request.');return data;
 }
-export const importColumns=['name','email','phone','eventDate','eventId','type','seriesId','role','publicConsent','inKind','notes','memberId'];
-export const importHeaders=['Name','Email','Mobile','Date','Event Id','Sponsorship Type','Series Id','Role','Public Consent','Additional Offers / Requests','Notes','Member Id'];
+export const importColumns=['name','email','phone','notes','publicConsent','active'];
+export const importHeaders=['Name','Email','Mobile','Internal Notes','Public Consent','Active'];
 export function importMapping(headers){
  const normal=value=>String(value).trim().toLowerCase().replace(/[^a-z0-9]/g,'');
- return Object.fromEntries(importColumns.map((key,index)=>[key,headers.findIndex(header=>[normal(key),normal(importHeaders[index]),...(key==='inKind'?['inkindprovision']:[])].includes(normal(header)))]));
+ return Object.fromEntries(importColumns.map((key,index)=>[key,headers.findIndex(header=>[normal(key),normal(importHeaders[index])].includes(normal(header)))]));
 }
 export function mapImportRows(data,mapping){
  return data.rows.map(row=>{
   const value=Object.fromEntries(importColumns.map(key=>[key,mapping[key]<0?'':row[mapping[key]]]));
-  const date=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(value.eventDate||'').trim());
-  if(date)value.eventDate=date[3]+'-'+date[2]+'-'+date[1];
-  if(/^(true|false)$/i.test(String(value.publicConsent)))value.publicConsent=String(value.publicConsent).toLowerCase();
+  value.name=String(value.name||'').trim();
+  value.email=String(value.email||'').trim();
+  value.phone=String(value.phone||'').trim();
+  value.notes=String(value.notes||'').trim();
+  value.publicConsent=/^(true|yes|1)$/i.test(String(value.publicConsent||'').trim());
+  value.active=!/^(false|no|0)$/i.test(String(value.active||'').trim());
   return value;
  });
 }
 export async function importTemplate(){
  const {buildImportTemplateWorkbook}=await import('@calendar/services/templateService.js');
- const examples=['one_time','annual','permanent'].map((type,index)=>['Example sponsor '+(index+1),'example'+(index+1)+'@example.org','','11/01/2027','replace-with-event-id',type,type==='permanent'?'replace-with-series-id':'','joint','false','Example food / serving offer','Replace all example values before import','']);
- const book=await buildImportTemplateWorkbook({sheetName:'Niaz Sponsors',headers:importHeaders,dataRows:examples,widths:[30,30,22,18,30,22,30,18,20,42,42,22],lastRow:501,textColumns:[3,4,5,7,12],lists:[['Sponsorship Types','Roles','Public Consent'],['one_time','joint','false'],['annual','sole','true'],['permanent','contributor','']],validations:[{col:6,source:'"one_time,annual,permanent"'},{col:8,source:'"sole,joint,contributor"'},{col:9,source:'"false,true"'}],instructions:[
-  ['MWA Niaz Sponsorship - sponsor/event import'],[''],
-  ['Fill in the "Niaz Sponsors" sheet (keep the header row). Required: Name, Email or Mobile, Date, Sponsorship Type. Replace all three example rows with real reviewed records.'],
-  ['Date format is DD/MM/YYYY (day first), e.g. 11/01/2027 is 11 January 2027. Dates refer to the Gregorian Australia/Sydney programme date. Legacy YYYY-MM-DD text is also accepted.'],
-  ['Keep Date, Mobile and reference columns as Text. Do not use ambiguous short years, Hijri dates or formulas.'],
-  ['Event Id must match an existing confirmed public MWA programme on that date; it is required when more than one programme matches. Use Programme date > Find programmes, never guess by title.'],
-  ['Sponsorship Type: one_time, annual or permanent. A permanent row requires the event\'s stable Series Id. Role: sole, joint or contributor. Dropdowns are conveniences; the server revalidates every row.'],
-  ['Public Consent defaults to false (private). Enter true only after obtaining explicit revocable public-name consent. Reviewed imports create approved coordinator assignments immediately.'],
-  ['Member Id is reserved and must stay blank: authoritative membership linking is not configured. No payment or membership is created by importing.'],
-  ['Additional Offers / Requests and Notes are optional private coordination details. No cash amounts or payment success may be entered here.'],
-  ['Save as .xlsx (preserves Lists/dropdowns/Instructions), or save the Niaz Sponsors sheet only as UTF-8 .csv. CSV supports quoted commas/newlines; it does not preserve workbook instructions or dropdowns.'],
-  ['Import accepts at most 500 rows and a 2 MB file; server preview has a smaller 800 KB data limit. Review errors/duplicates before importing resumable batches of 40. Existing legacy Calendar fields are not overwritten.']
+ const book=await buildImportTemplateWorkbook({sheetName:'Niaz Sponsors',headers:importHeaders,dataRows:[],widths:[30,32,24,48,20,16],lastRow:501,textColumns:[3],validations:[{col:5,source:'"true,false"'},{col:6,source:'"true,false"'}],instructions:[
+  ['MWA Niaz Sponsor Directory - contact import'],[''],
+  ['Fill in the Niaz Sponsors sheet. Name is required; Email, Mobile, Internal Notes, Public Consent and Active are optional.'],
+  ['Public Consent defaults to false. Enter true only with explicit permission to publish the sponsor name. Active defaults to true.'],
+  ['Keep mobile numbers as Text, including 04xxxxxxxx. Import creates contacts only; it does not assign events, create donations or send emails.'],
+  ['Existing email/mobile contacts are skipped for coordinator review. Import up to 500 data rows per file; errors are shown per row.']
  ]});
  return new Blob([await book.xlsx.writeBuffer()],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 export async function readImport(file){
  if(file.size>2*1024*1024)throw Error('Choose an import under 2 MB.');
- if(file.name.toLowerCase().endsWith('.csv'))return parseCSV(await file.text());
+ if(file.name.toLowerCase().endsWith('.csv')){const parsed=parseCSV(await file.text());if(parsed.rows.length>500)throw Error('Use a header and up to 500 populated rows.');return parsed;}
  if(!file.name.toLowerCase().endsWith('.xlsx'))throw Error('Choose an Excel .xlsx or UTF-8 .csv file.');
- const XLSX=await import('xlsx'),book=XLSX.read(await file.arrayBuffer(),{type:'array',sheetRows:502});
- const sheet=book.Sheets[book.SheetNames[0]];
- if(!sheet||XLSX.utils.decode_range(sheet['!fullref']||sheet['!ref']||'A1').e.r>500)throw Error('Use a header and up to 500 rows.');
+ const XLSX=await import('xlsx'),book=XLSX.read(await file.arrayBuffer(),{type:'array'});
+ const sheet=book.Sheets['Niaz Sponsors']||book.Sheets[book.SheetNames[0]];
+ if(!sheet)throw Error('Choose a workbook with a sponsor sheet.');
  const [headers=[],...rows]=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false});
- return {headers:headers.map(String),rows:rows.filter(row=>row.some(value=>String(value).trim()))};
+ const populated=rows.filter(row=>row.some(value=>String(value).trim()));
+ if(!headers.some(value=>String(value).trim())||populated.length>500)throw Error('Use a header and up to 500 populated rows.');
+ return {headers:headers.map(String),rows:populated};
 }
 export async function workbook(sheets){
  const ExcelJS=(await import('exceljs')).default,book=new ExcelJS.Workbook();

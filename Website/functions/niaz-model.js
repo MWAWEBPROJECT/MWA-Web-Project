@@ -9,10 +9,10 @@ function text(value,label,max=200,required=false){
 function id(value){if(typeof value!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(value))throw fault(400,'Choose a valid reference.');return value;}
 function choice(value,allowed,label){if(!allowed.includes(value))throw fault(400,'Choose '+label+'.');return value;}
 function email(value){const v=text(value||'','email',254).toLowerCase();if(v&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))throw fault(400,'Enter a valid email.');return v;}
-function sponsor(input){
+function sponsor(input,{requireContact=true}={}){
  const name=text(input.name,'sponsor name',160,true),contactEmail=email(input.email),phone=mobile(text(input.phone||'','phone',30));
  if(phone&&!/^\+[1-9]\d{7,14}$/.test(phone))throw fault(400,'Enter a valid international or Australian mobile.');
- if(!contactEmail&&!phone)throw fault(400,'Provide a sponsor email or phone for duplicate checking.');
+ if(requireContact&&!contactEmail&&!phone)throw fault(400,'Provide a sponsor email or phone for duplicate checking.');
  if(input.memberId)throw fault(412,'Member linking is unavailable until an authoritative membership adapter is configured. Do not infer membership from a supplied ID.');
  if(typeof input.publicConsent!=='boolean')throw fault(400,'Choose whether the name may be displayed publicly.');
  return {name,email:contactEmail,phone,active:input.active!==false,publicConsent:input.publicConsent,consentVersion:'niaz-2026-11-v1',notes:text(input.notes||'','notes',2000)};

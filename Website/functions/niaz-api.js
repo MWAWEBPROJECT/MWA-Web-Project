@@ -24,7 +24,7 @@ async function currentEvent(tx,db,eventId){
  return snapData(snap);
 }
 async function saveSponsor(db,input,actor){
- const value=M.sponsor(input),key=input.id?M.id(input.id):M.sponsorKey(value),ref=db.doc('niazSponsors/'+key);
+  const value=M.sponsor(input,{requireContact:false}),key=input.id?M.id(input.id):value.email||value.phone?M.sponsorKey(value):randomUUID(),ref=db.doc('niazSponsors/'+key);
  return db.runTransaction(async tx=>{
   const current=snapData(await tx.get(ref)),contacts=[];
   for(const contactKey of M.contactKeys(value)){const ref=db.doc('_niazContacts/'+contactKey);contacts.push({ref,contact:snapData(await tx.get(ref))});}
@@ -285,6 +285,21 @@ async function readDocuments(reader,db,paths){
  for(const snapshot of snapshots)result.set(snapshot.ref.path,snapData(snapshot));
  return result;
 }
+async function importContacts(db,rows,actor){
+ if(!Array.isArray(rows)||rows.length<1||rows.length>40||Buffer.byteLength(JSON.stringify(rows))>100000)throw M.fault(400,'Import 1 to 40 sponsor contacts per batch.');
+ const results=[];
+ for(const [index,input] of rows.entries()){
+  try{
+   const value=M.sponsor({...input,publicConsent:input.publicConsent===true},{requireContact:false});
+   const keys=M.contactKeys(value);
+   const matches=await Promise.all(keys.map(key=>db.doc('_niazContacts/'+key).get()));
+   if(matches.some(snap=>snap.exists)){results.push({row:index+1,status:'duplicate',name:value.name});continue;}
+   await saveSponsor(db,{...value,revision:0},actor);
+   results.push({row:index+1,status:'created',name:value.name});
+  }catch(error){if(!error.status)throw error;results.push({row:index+1,status:'error',error:error.message});}
+ }
+ return {rows:results};
+}
 async function previewImport(db,rows,actor){
  if(!Array.isArray(rows)||rows.length<1||rows.length>500||Buffer.byteLength(JSON.stringify(rows))>800000)throw M.fault(400,'Import between 1 and 500 rows (under 800 KB).');
  const prepared=rows.map((input,index)=>{
@@ -467,6 +482,7 @@ async function handle(req,res,{db,getAuth,origins}){
   if(!manager)throw M.fault(403,'Niaz coordinator management access required.');
   if(path==='/attention-acknowledge')return res.json(await acknowledgeAttention(db,input,manager));
   if(path==='/sponsor')return res.json({sponsor:await saveSponsor(db,input,manager)});
+   if(path==='/contacts-import')return res.json(await importContacts(db,input.rows,manager));
   if(path==='/event-plan')return res.json(await require('./niaz-event-plan').saveEventPlan(db,input,manager));
   if(path==='/assign')return res.json({assignment:await assign(db,input,manager)});
   if(path==='/coverage')return res.json(await saveCoverage(db,M.id(input.eventId),input,manager,finance));
@@ -482,4 +498,4 @@ async function handle(req,res,{db,getAuth,origins}){
   throw M.fault(404,'Niaz action not found.');
  }catch(error){console.error('Niaz request failed',{status:error.status||503,message:error.status?error.message:'Internal request failure'});return res.status(error.status||503).json({error:error.status?error.message:'Niaz is temporarily unavailable. No success is assumed; refresh before retrying.'});}
 }
-module.exports={handle,list,contextualList,saveSponsor,assign,eventDetail,saveCoverage,submitEOI,decideEOI,proposeAlternative,own,previewImport,importStep,identity,audit,queue,legacyPreview,editOwnEOI,dashboard,eoiList,acknowledgeAttention};
+module.exports={handle,list,contextualList,saveSponsor,importContacts,assign,eventDetail,saveCoverage,submitEOI,decideEOI,proposeAlternative,own,previewImport,importStep,identity,audit,queue,legacyPreview,editOwnEOI,dashboard,eoiList,acknowledgeAttention};

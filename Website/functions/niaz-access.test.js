@@ -24,6 +24,7 @@ test('Server requires verified profile/module/expiry; new finance is not a legac
  let res=response();await A.handle(request('/session','GET',{},'test'),res,opts);
  assert.equal(res.code,200);assert.equal(res.body.manage,false);assert.equal(res.body.finance,false);
  res=response();await A.handle(request('/sponsor','POST',{},'test'),res,opts);assert.equal(res.code,403);
+ res=response();await A.handle(request('/contacts-import','POST',{rows:[{name:'Example'}]},'test'),res,opts);assert.equal(res.code,403);
  for(const modules of [['niaz-read'],['niaz-finance']]){
   records['adminAllowlist/'+email]={uid,modules};
   res=response();await A.handle(request('/attention-acknowledge','POST',{id:'conflict'},'test'),res,opts);assert.equal(res.code,403);
