@@ -456,6 +456,14 @@ test('Coordinator assignment leaves finance target unchanged when not supplied',
  await P.saveEventPlan(db,{eventId:'event1',revision:3,mwaArranged:false,arrangementConfirmed:false,acceptExtraEOIs:false,notes:'',baseline:[],assignments:[{sponsorId:'s',type:'one_time',role:'sole'}]},actor);
  assert.equal(db.store.get('niazEventCoverage/event1').fundsRequiredCents,25000);
 });
+test('Coordinator can change an approved one-time sole sponsor to joint permanent',async()=>{
+ const P=require('./niaz-event-plan');
+ const db=database({'events/event1':event,'niazSponsors/s':{active:true},'niazSponsorships/a':{sponsorId:'s',eventId:'event1',status:'approved',type:'one_time',role:'sole',revision:1}});
+ await P.saveEventPlan(db,{eventId:'event1',revision:0,mwaArranged:false,arrangementConfirmed:false,acceptExtraEOIs:false,notes:'',baseline:[{id:'a',revision:1}],assignments:[{id:'a',sponsorId:'s',revision:1,type:'permanent',seriesId:'series1',role:'joint'}]},actor);
+ const saved=db.store.get('niazSponsorships/a');
+ assert.equal(saved.type,'permanent');assert.equal(saved.role,'joint');assert.equal(saved.seriesId,'series1');
+ assert.equal(db.store.get('niazProgrammeSeries/'+M.hash('series1:s')).status,'active');
+});
 test('Discretionary EOI creates an active sponsor with explicit reminder preference and resolves at approval',async()=>{
  const db=database({'events/event1':event});const request=await A.submitEOI(db,{name:'Synthetic',eventIds:['event1'],requestId:'discretion',type:'discretion',publicConsent:true,optionalReminders:true},person);
  const sponsor=db.store.get('niazSponsors/'+request.sponsorId);assert.equal(sponsor.active,true);assert.equal(sponsor.emailPreferences.optionalReminders,true);
