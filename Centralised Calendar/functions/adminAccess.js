@@ -78,8 +78,11 @@ function sessionAllowed({ provider, passwordLoginDisabled }) {
 function shouldDisablePasswordLogin({ email, provider }) {
   return isOwner(email) && provider === 'google.com';
 }
+function shouldAuditSignIn(userDoc, authTime) {
+  return !Number.isInteger(authTime) || authTime <= 0 || userDoc?.lastAuditedAuthTime !== authTime;
+}
 
 module.exports = {
   OWNER_EMAIL, isOwner, normalizeEmail, isValidEmail, decideSignIn, checkRemoval, checkAddition,
-  sessionAllowed, shouldDisablePasswordLogin
+  sessionAllowed, shouldDisablePasswordLogin, shouldAuditSignIn
 };

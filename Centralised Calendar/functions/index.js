@@ -32,7 +32,7 @@ const { normalizeScope, selectSeriesTargets, retimeOccurrence } = require('./ser
 const { toOrgTimeParts } = require('./dateUtils');
 const { sanitizePrayer, resolvePrayerInstants } = require('./prayerTimes');
 const { sanitizeProgramExtras, expensesTotal } = require('./programExtras');
-const { OWNER_EMAIL, normalizeEmail, isValidEmail, decideSignIn, checkRemoval, checkAddition, sessionAllowed, shouldDisablePasswordLogin } = require('./adminAccess');
+const { OWNER_EMAIL, normalizeEmail, isValidEmail, decideSignIn, checkRemoval, checkAddition, sessionAllowed, shouldDisablePasswordLogin, shouldAuditSignIn } = require('./adminAccess');
 const bookingVerification = require('./bookingVerification');
 const { createBookingSubmissionService } = require('./bookingSubmission');
 const { createConflictNeighborhoodRefresher, conflictScopeQuery } = require('./conflictNeighborhood');
@@ -1213,6 +1213,7 @@ exports.syncAdminAccess = onCall({ cors: true }, async (request) => {
   });
   const now = new Date().toISOString();
   const displayName = auth.token.name || '';
+  const authTime = Number(auth.token.auth_time);
 
   if (decision.action === 'grant' || decision.action === 'migrate') {
     const listRef=db.collection('adminAllowlist').doc(email);
@@ -1220,11 +1221,12 @@ exports.syncAdminAccess = onCall({ cors: true }, async (request) => {
       const [freshList,freshUser]=await Promise.all([tx.get(listRef),tx.get(userRef)]);
       const current=decideSignIn({email,emailVerified,provider,passwordLoginDisabled,allowlisted:freshList.exists,grantUid:freshList.data()?.uid,uid:auth.uid,userDoc:freshUser.exists?freshUser.data():null});
       if(!['grant','migrate'].includes(current.action))throw new HttpsError('permission-denied','Admin access was removed.');
-      tx.set(userRef,{role:'admin',email,displayName,allowlistManaged:true,lastSignInAt:now,lastSignInProvider:provider},{merge:true});
+      const newSignIn=shouldAuditSignIn(freshUser.data(),authTime);
+      tx.set(userRef,{role:'admin',email,displayName,allowlistManaged:true,...(newSignIn?{lastSignInAt:now,lastSignInProvider:provider,...(Number.isInteger(authTime)&&authTime>0?{lastAuditedAuthTime:authTime}:{})}:{})},{merge:true});
       if(!freshList.exists)tx.create(listRef,{email,addedBy:current.owner?'account owner':'existing admin (migrated)',addedAt:now,uid:auth.uid,displayName,lastSignInAt:now});
-      else tx.update(listRef,{uid:auth.uid,displayName,lastSignInAt:now});
+      else tx.update(listRef,{uid:auth.uid,displayName,...(newSignIn?{lastSignInAt:now}:{})});
+      if(newSignIn)tx.create(db.collection('auditLog').doc(),require('./auditModel').auditEntry({entityType:'admin',entityId:email,action:current.action==='migrate'?'admin.migrated':'admin.signin',userId:auth.uid,userEmail:email,note:`Signed in via ${provider||'unknown'}`},now));
     });
-    await writeAudit({ entityType: 'admin', entityId: email, action: decision.action === 'migrate' ? 'admin.migrated' : 'admin.signin', userId: auth.uid, userEmail: email, note: `Signed in via ${provider || 'unknown'}` });
     if (!passwordLoginDisabled && shouldDisablePasswordLogin({ email, provider })) {
       await AUTH_SETTINGS_DOC().set({ passwordLoginDisabled: true, disabledAt: now, disabledBy: email }, { merge: true });
       await writeAudit({ entityType: 'admin', entityId: 'auth', action: 'admin.password_login_disabled', userId: auth.uid, userEmail: email, note: 'Owner signed in with Google; email/password admin sign-in turned off.' });

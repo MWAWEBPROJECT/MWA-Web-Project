@@ -28,12 +28,16 @@ function auditFilters(input = {}) {
   if ((from && !validDate(from)) || (to && !validDate(to)) || (from && to && from > to)) throw Error('Choose a valid date range.');
   if (user.length > 254) throw Error('The user filter is too long.');
   if (input.module && !MODULES.includes(input.module)) throw Error('Choose a valid module.');
+  const activity = input.activity || 'changes';
+  if (!['changes','access','all'].includes(activity)) throw Error('Choose a valid activity type.');
   let end = null;
   if (to) { const next = new Date(to+'T12:00:00Z'); next.setUTCDate(next.getUTCDate()+1); end = localToUtcIso(next.toISOString().slice(0,10),'00:00'); }
-  return { from:from ? localToUtcIso(from,'00:00') : null, to:end, user, module:input.module || '' };
+  return { from:from ? localToUtcIso(from,'00:00') : null, to:end, user, module:input.module || '', activity };
 }
+const ACCESS_ACTIONS = new Set(['admin.signin','admin.signin_denied','module.opened','session.signout']);
 function matchesAudit(entry, filters) {
   return (!filters.user || String(entry.userEmail || '').toLowerCase().includes(filters.user) || String(entry.userId || '').toLowerCase() === filters.user)
-    && (!filters.module || moduleFor(entry) === filters.module);
+    && (!filters.module || moduleFor(entry) === filters.module)
+    && (filters.activity === 'all' || (filters.activity === 'access' ? ACCESS_ACTIONS.has(entry.action) : !ACCESS_ACTIONS.has(entry.action)));
 }
 module.exports = { MODULES,moduleFor,auditEntry,changedValues,validDate,auditFilters,matchesAudit };

@@ -7,7 +7,7 @@ test('historic booking/admin logs and new modules share a normalized module and 
  assert.equal(entry.userEmail,'admin@mwa.au');assert.equal(entry.userId,'uid');assert.equal(entry.timestamp,'2026-10-27T00:00:00.000Z');
 });
 test('Sydney audit date ranges include the whole day and handle both daylight-saving transitions',()=>{
- assert.deepEqual(auditFilters({from:'2026-10-04',to:'2026-10-04'}),{from:'2026-10-03T14:00:00.000Z',to:'2026-10-04T13:00:00.000Z',user:'',module:''});
+ assert.deepEqual(auditFilters({from:'2026-10-04',to:'2026-10-04'}),{from:'2026-10-03T14:00:00.000Z',to:'2026-10-04T13:00:00.000Z',user:'',module:'',activity:'changes'});
  const f=auditFilters({from:'2026-04-05',to:'2026-04-05'});assert.equal((Date.parse(f.to)-Date.parse(f.from))/3600000,25);
  assert.throws(()=>auditFilters({from:'2026-02-30'}));assert.throws(()=>auditFilters({from:'2026-10-28',to:'2026-10-27'}));
 });
@@ -25,4 +25,14 @@ test('Form Builder activity retains its own module and can be filtered independe
  assert.equal(entry.module,'form-builder');
  assert.equal(matchesAudit(entry,auditFilters({module:'form-builder'})),true);
  assert.equal(matchesAudit(entry,auditFilters({module:'website-cms'})),false);
+});
+test('substantive changes are visible by default while access activity remains searchable',()=>{
+ const merge={module:'events-bookings',action:'events_merged',userEmail:'admin@mwa.au'};
+ const signin={module:'tools-automation',action:'admin.signin',userEmail:'admin@mwa.au'};
+ assert.equal(matchesAudit(merge,auditFilters({})),true);
+ assert.equal(matchesAudit(signin,auditFilters({})),false);
+ assert.equal(matchesAudit(signin,auditFilters({activity:'access'})),true);
+ assert.equal(matchesAudit(merge,auditFilters({activity:'access'})),false);
+ assert.equal(matchesAudit(signin,auditFilters({activity:'all'})),true);
+ assert.throws(()=>auditFilters({activity:'invalid'}));
 });

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeEmail, isValidEmail, decideSignIn, checkRemoval, checkAddition, sessionAllowed, shouldDisablePasswordLogin } = require('./adminAccess');
+const { normalizeEmail, isValidEmail, decideSignIn, checkRemoval, checkAddition, sessionAllowed, shouldDisablePasswordLogin, shouldAuditSignIn } = require('./adminAccess');
 
 test('normalizes and validates emails', () => {
   assert.equal(normalizeEmail('  Ali@Example.ORG '), 'ali@example.org');
@@ -67,4 +67,9 @@ test('only the owner signing in with Google disables password login', () => {
   assert.equal(shouldDisablePasswordLogin({ email: 'Admin@muhammadiwelfare.org.au', provider: 'google.com' }), true);
   assert.equal(shouldDisablePasswordLogin({ email: 'admin@muhammadiwelfare.org.au', provider: 'password' }), false);
   assert.equal(shouldDisablePasswordLogin({ email: 'b@x.org', provider: 'google.com' }), false);
+});
+test('a repeated admin check in one Firebase sign-in creates no second sign-in record',()=>{
+  assert.equal(shouldAuditSignIn({},1732250000),true);
+  assert.equal(shouldAuditSignIn({lastAuditedAuthTime:1732250000},1732250000),false);
+  assert.equal(shouldAuditSignIn({lastAuditedAuthTime:1732250000},1732250100),true);
 });
