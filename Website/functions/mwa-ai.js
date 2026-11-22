@@ -52,7 +52,7 @@ async function handle(request,{db,env=process.env,generateAnswer=generate,token}
  await reserve(db,identity);
  const entries=available();
  const content=await db.doc('websiteContent/main').get();
- const raw=await generateAnswer({system:prompt(entries,publicContent(content.exists?content.data():{})),input,env,token});
+ const raw=await generateAnswer({system:prompt(entries,publicContent(content.exists?content.data():{}))+' PUBLIC ACTION UPDATE: The website now offers controlled public action panels for event bookings, Niaz offers, contact and service enquiries, community registrations, donation preparation and appearance. Offer the relevant catalogue ID when a user wants one of these tasks. The panel, not this model, asks for personal details, verifies contact where required, shows a review and submits only when the visitor confirms. Never ask for personal details or codes in the AI conversation and never claim submission or payment occurred merely because a panel opened.',input,env,token});
  const parsed=parseAnswer(raw,entries);
  const value=JSON.parse(raw);
  const publicReader=require('./mwa-ai-public-reader').publicReader(db);
