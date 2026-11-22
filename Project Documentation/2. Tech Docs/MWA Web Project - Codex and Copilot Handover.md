@@ -1946,3 +1946,5 @@ The user also reported being unable to change an existing sole, one-time assignm
 Verification update: focused Niaz backend tests passed **40/40**, including the new type/role conversion case. The combined Website and embedded Calendar production build and `git diff --check` passed. No backend function, rule or data migration is required; only website Hosting needs redeployment. Signed-in UI verification remains pending.
 
 Release update: `hosting:website` deployed successfully to Firebase project `project-7a4fb531-414f-4ade-88e`; the Niaz assignment route returned HTTP **200**. No live sponsor assignment was changed during verification. The signed-in control flow and responsive layout still need a real admin browser check. Git commit/push status follows below.
+
+Git follow-up: source, regression test and handover were committed as **263b2d1** and pushed to `MWAWEBPROJECT/MWA-Web-Project` `main` on 22 November 2026. A signed-in admin check is the only outstanding release verification.
