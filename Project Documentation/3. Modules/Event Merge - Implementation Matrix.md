@@ -1,6 +1,6 @@
 # Event merge: implementation matrix
 
-Status: implementation in progress. No production merge is enabled by this document.
+Status: bounded atomic merge deployed on 22 November 2026. Larger merges remain blocked pending a staged migration path.
 
 ## Admin workflow
 
@@ -30,8 +30,8 @@ Status: implementation in progress. No production merge is enabled by this docum
 
 - Server checks current permissions for Events & Bookings and each affected admin module. If the actor cannot review a dependency, block the merge with a count and module name.
 - Preview carries source revisions or document update timestamps. Save rejects stale reviews and concurrent edits.
-- Use a recoverable idempotent migration for more than one Firestore transaction can hold; do not delete the superseded booking until every transfer has completed and been verified.
-- During migration, prevent new registrations, donations, sponsorships and booking edits on both source IDs. Reject unrelated approvals against the pair.
+- Current release performs the complete merge in one Firestore transaction and rejects more than 320 linked documents or 450 planned writes without changing records. A recoverable, idempotent staged migration is still required for larger merges; do not remove the limit until that path is tested.
+- Current atomic transaction conflicts with concurrent event/form writes and rechecks the event at donation checkout creation. A future staged migration must explicitly lock both events and their linked submissions while chunks are moved.
 - Check actual venue/time compatibility and third-party clashes after choosing the surviving slot. The merge is not a general conflict override.
 - Preserve financial and response audit provenance even when their active event link moves. Never send a cancellation email for the removed booking as though the programme were cancelled. Send a merge notice only after final state is committed and notification policy is defined.
 

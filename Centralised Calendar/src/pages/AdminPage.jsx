@@ -7,9 +7,10 @@ import {
   createDepartment, updateDepartment, deleteDepartment
 } from '../services/directoryService.js';
 import BookingModal from '../components/BookingModal.jsx';
+import EventMergeModal from '../components/EventMergeModal.jsx';
 import { Trash2 } from 'lucide-react';
 import { useBookingDeletion } from '../components/useBookingDeletion.jsx';
-import { decideBooking } from '../services/eventsService.js';
+import { decideBooking, fetchAllAdminBookings } from '../services/eventsService.js';
 import { runBulkBookingDecision } from '../utils/bulkBookingDecision.mjs';
 import './booking-bulk.css';
 
@@ -18,6 +19,16 @@ export default function AdminPage({ events, venues, departments, hijriOverrides,
   const {user,profile,isOwner,loading}=auth;
   const isAdmin=auth.canAccess('events-bookings');
   const [sub, setSub] = useState('pending');
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeEventsList, setMergeEventsList] = useState([]);
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const [mergeError, setMergeError] = useState('');
+  async function openMerge() {
+    setMergeLoading(true); setMergeError('');
+    try { setMergeEventsList(await fetchAllAdminBookings()); setMergeOpen(true); }
+    catch (error) { setMergeError(error?.message || 'Could not load all programmes for merge.'); }
+    finally { setMergeLoading(false); }
+  }
   useEffect(()=>{registerBack?.(sub==='pending'?null:()=>setSub('pending'));return()=>registerBack?.(null);},[sub,registerBack]);
 
   if (loading) return <section><p className="muted">Loading…</p></section>;
@@ -35,12 +46,14 @@ export default function AdminPage({ events, venues, departments, hijriOverrides,
           </button>
         ))}
       </div>
+      {(sub === 'pending' || sub === 'confirmed') && <div className="bar"><button type="button" className="btn alt" disabled={mergeLoading} onClick={openMerge}>{mergeLoading ? 'Loading programmes…' : 'Merge two programmes'}</button>{mergeError && <p role="alert" className="err">{mergeError}</p>}</div>}
       {(sub === 'pending' || sub === 'confirmed') && (
         <BookingQueue key={sub} bookings={sub === 'pending' ? pending : confirmed} pending={sub === 'pending'}
           venues={venues} departments={departments} hijriOverrides={hijriOverrides} onSaved={onSaved} />
       )}
       {sub === 'venues' && <VenuesTab venues={venues} />}
       {sub === 'departments' && <DepartmentsTab departments={departments} />}
+      {mergeOpen && <EventMergeModal events={mergeEventsList} onClose={() => setMergeOpen(false)} onSaved={() => { setMergeOpen(false); onSaved?.(); }} />}
     </section>
   );
 }

@@ -668,6 +668,18 @@ exports.decideBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
 });
 
 // â”€â”€ Callable: admin edit of an existing booking's core fields â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+exports.previewEventMerge = onCall({ cors: true, timeoutSeconds: 120 }, async request => {
+  const admin = await requireAdmin(request.auth, 'events-bookings');
+  return require('./eventMergeService').preview(db, admin, request.data?.keepId, request.data?.removeId, HttpsError);
+});
+
+exports.mergeEvents = onCall({ cors: true, timeoutSeconds: 120 }, async request => {
+  const admin = await requireAdmin(request.auth, 'events-bookings');
+  return require('./eventMergeService').execute(db, admin, request.data || {}, HttpsError, {
+    findOverlaps, refreshConflicts: refreshConflictNeighborhood, dateKey: dateKeyOf, logError: logger.error
+  });
+});
+
 exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (request) => {
   const admin = await requireAdmin(request.auth);
   const { eventId, patch } = request.data || {};
@@ -1008,6 +1020,7 @@ exports.deleteBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
 
   const writes = [];
   for (const t of targets) {
+    if (Array.isArray(t.mergedFrom) && t.mergedFrom.length) throw new HttpsError('failed-precondition', 'This combined programme has linked merge history. Cancel it instead of deleting its booking record.');
     writes.push((batch) => batch.delete(db.collection('events').doc(t.id)));
     writes.push((batch) => batch.set(db.collection('auditLog').doc(), {
       entityType: 'event', entityId: t.id, action: 'deleted',

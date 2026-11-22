@@ -21,8 +21,8 @@ function mergedTitle(value) {
 function selectedItems(keepItems, removeItems, ids, label) {
   if (!Array.isArray(ids) || ids.length > 100 || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) throw new Error(`Choose valid ${label}.`);
   const all = new Map([
-    ...(keepItems || []).map(item => [`keep:${item.id}`, item]),
-    ...(removeItems || []).map(item => [`remove:${item.id}`, item])
+    ...(Array.isArray(keepItems) ? keepItems : []).filter(item => item && typeof item === 'object' && item.id).map(item => [`keep:${item.id}`, item]),
+    ...(Array.isArray(removeItems) ? removeItems : []).filter(item => item && typeof item === 'object' && item.id).map(item => [`remove:${item.id}`, item])
   ]);
   const selected = ids.map(id => all.get(id));
   if (selected.some(item => !item)) throw new Error(`${label} changed. Refresh the merge review.`);

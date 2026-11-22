@@ -113,5 +113,7 @@ export const recomputeAllConflicts = () => call('recomputeAllConflicts', {});
 
 /** Admin-only: Niaz sponsor / reciters / volunteers / expenses for one MWA Programs booking (partial patch). */
 export const updateProgramExtras = (eventId, patch) => call('updateProgramExtras', { eventId, ...patch });
+export const previewEventMerge = (keepId, removeId) => call('previewEventMerge', { keepId, removeId });
+export const mergeEvents = payload => call('mergeEvents', payload);
 
 export async function getVenueAvailability(date,audience){return (await httpsCallable(functions,'getVenueAvailability')({date,audience})).data;}

@@ -26,7 +26,7 @@ async function saveEventPlan(db,input,actor){
    if(row.id&&(!current.has(row.id)||current.get(row.id).data().sponsorId!==row.sponsorId||current.get(row.id).data().revision!==row.revision))throw M.fault(409,'Assignment changed. Refresh before saving.');
    const sponsor=await tx.get(db.doc('niazSponsors/'+row.sponsorId));
    if(!sponsor.data()?.active)throw M.fault(409,'Choose an active sponsor.');
-   if(row.type==='permanent'&&row.seriesId!==event.seriesId)throw M.fault(400,'Permanent sponsorship must use this programme series.');
+   if(row.type==='permanent'&&row.seriesId!==event.seriesId&&!(row.id&&current.get(row.id)?.data()?.mergeOperationId&&current.get(row.id).data().seriesId===row.seriesId))throw M.fault(400,'Permanent sponsorship must use this programme series.');
    const ref=row.id?db.doc('niazSponsorships/'+row.id):db.doc('niazSponsorships/'+M.assignmentKey(row.sponsorId,eventId));
    const previous=row.id?current.get(row.id):await tx.get(ref);
    if(!row.id&&previous.exists)throw M.fault(409,'This sponsor has an earlier assignment. Review its history before reassigning.');
