@@ -1948,3 +1948,11 @@ Verification update: focused Niaz backend tests passed **40/40**, including the 
 Release update: `hosting:website` deployed successfully to Firebase project `project-7a4fb531-414f-4ade-88e`; the Niaz assignment route returned HTTP **200**. No live sponsor assignment was changed during verification. The signed-in control flow and responsive layout still need a real admin browser check. Git commit/push status follows below.
 
 Git follow-up: source, regression test and handover were committed as **263b2d1** and pushed to `MWAWEBPROJECT/MWA-Web-Project` `main` on 22 November 2026. A signed-in admin check is the only outstanding release verification.
+
+## Shared Niaz month selector in Monthly Programme Dashboard — 22 November 2026
+
+The user asked for the same Gregorian/Hijri month selector in the Monthly Programme Dashboard. Added shared `Website/website/NiazMonthPicker.jsx`, its styles, and pure calendar helpers in `niaz-months.mjs`; both the dashboard and Assign Sponsors tab now use calendar, year and month controls. The assignment filter supports all years/months; the dashboard requires a complete selection. For a Hijri month, the dashboard loads each overlapping Gregorian month from the existing authenticated API, then retains only events in the selected Hijri month according to the shared Calendar Management overrides. The same filtered dashboard rows are used in the register export. No Niaz backend API or stored programme dates changed. Added a boundary test in `niaz-months.test.mjs`; it passed **1/1**. `git diff --check` passed. Combined build, Firebase Hosting deployment, signed-in UI verification and Git push are pending at this checkpoint.
+
+The final combined Website and embedded Calendar production build passed after the shared picker refactor. Hosting deployment and Git push remain pending; no live sponsorship record was changed during this work.
+
+Release check: `hosting:website` deployed successfully to Firebase project `project-7a4fb531-414f-4ade-88e`; `/admin-login?module=niaz&tab=dashboard` returned HTTP **200**. The authenticated controls still need a real admin browser check. Source and handover Git push status follows below.

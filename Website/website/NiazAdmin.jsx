@@ -8,6 +8,9 @@ import './registrations.css';
 import './niaz.css';
 import NiazEventEditor from './NiazEventEditor.jsx';
 import NiazAssignmentWorkspace from './NiazAssignmentWorkspace.jsx';
+import NiazMonthPicker from './NiazMonthPicker.jsx';
+import {getHijriSettings} from '@calendar/services/calendarSettingsService.js';
+import {currentMonthKey,gregorianMonthsForHijri,monthKey} from './niaz-months.mjs';
 const dayKey=value=>value?new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value)):'';
 const empty=()=>({name:'',email:'',phone:'',publicConsent:false,active:true,notes:'',revision:0});
 const description={eois:'Sponsorship Requests',dashboard:'Monthly Programme Dashboard',workspace:'Assign Sponsors',programmes:'Recurring Commitments',assignments:'Sponsorship History',sponsors:'Sponsor Directory',notifications:'Notification delivery status'};
@@ -28,7 +31,7 @@ export default function NiazAdmin(){
  const [importData,setImportData]=useState(null),[mapping,setMapping]=useState({}),[preview,setPreview]=useState(null),[offset,setOffset]=useState(0);
  const [expandedId,setExpandedId]=useState(null);
  const [settings,setSettings]=useState({notificationEnabled:false,threeDayFollowup:false,coordinatorEmails:[]});
- const [month,setMonth]=useState(()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Australia/Sydney',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7));
+ const [month,setMonth]=useState(()=>currentMonthKey('gregorian')),[monthMode,setMonthMode]=useState('gregorian'),[monthOverrides,setMonthOverrides]=useState([]);
  const generation=useRef(0),active=useRef(false),dataUid=useRef(null);active.current=allowed;
  async function run(action){
   const ticket=generation.current,uid=session.user?.uid;setBusy(true);setError('');
@@ -36,15 +39,22 @@ export default function NiazAdmin(){
   catch(problem){if(ticket===generation.current&&active.current)setError(problem.message);}
   finally{if(ticket===generation.current&&active.current)setBusy(false);}
  }
+ async function dashboardRows(){
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return {items:[],next:null};
+  const months=monthMode==='hijri'?gregorianMonthsForHijri(month,monthOverrides):[month];
+  const pages=await Promise.all(months.map(value=>niazApi('/dashboard?month='+value)));
+  const items=pages.flatMap(page=>page.items);
+  return {items:monthMode==='hijri'?items.filter(row=>monthKey(row.startAt,'hijri',monthOverrides)===month):items,next:null};
+ }
  async function load(which=tab,after=''){
-  const ticket=generation.current,result=await niazApi('/'+which+(which==='dashboard'?'?month='+month:after?'?after='+encodeURIComponent(after):''));if(!active.current||ticket!==generation.current)return;
+  const ticket=generation.current,result=which==='dashboard'?await dashboardRows():await niazApi('/'+which+(after?'?after='+encodeURIComponent(after):''));if(!active.current||ticket!==generation.current)return;
   if(['sponsors','assignments','programmes','eois'].includes(which)&&!after){let cursor=result.next;while(cursor){const page=await niazApi('/'+which+'?after='+encodeURIComponent(cursor));result.items.push(...page.items);cursor=page.next;if(result.items.length>=10000&&cursor)throw Error('This view exceeds 10,000 records; request a scoped server report.');}result.next=null;if(!active.current||ticket!==generation.current)return;}
   if(which==='eois'&&!after){let cursor='',all=[];do{const page=await niazApi('/proposals'+(cursor?'?after='+encodeURIComponent(cursor):''));all.push(...page.items.map(row=>({...row,proposal:true})));cursor=page.next;if(all.length>=10000&&cursor)throw Error('Proposal review exceeds 10,000 records.');}while(cursor);result.items.push(...all);if(!active.current||ticket!==generation.current)return;}
   setRows(current=>after?[...current,...result.items]:result.items);setNext(result.next);
  }
  useEffect(()=>{
   setEditorDirty({});
-  generation.current++;dataUid.current=session.user?.uid;setRows([]);setPermissions(null);setDraft(null);setDetail(null);setPreview(null);setImportData(null);setError('');setNotice('');setBusy(false);setDirty(false);setTab(initialTab);setQuery('');setYear('');setStatus('');setEvents([]);setDate('');setSettings({notificationEnabled:false,threeDayFollowup:false,coordinatorEmails:[]});setAssignDraft({sponsorId:'',type:'one_time',role:'joint',seriesId:'',inKind:'',notes:'',revision:0});
+  generation.current++;dataUid.current=session.user?.uid;setRows([]);setPermissions(null);setDraft(null);setDetail(null);setPreview(null);setImportData(null);setError('');setNotice('');setBusy(false);setDirty(false);setTab(initialTab);setQuery('');setYear('');setStatus('');setEvents([]);setDate('');setMonthMode('gregorian');setMonth(currentMonthKey('gregorian'));setMonthOverrides([]);setSettings({notificationEnabled:false,threeDayFollowup:false,coordinatorEmails:[]});setAssignDraft({sponsorId:'',type:'one_time',role:'joint',seriesId:'',inKind:'',notes:'',revision:0});
   if(allowed)run(async()=>{const p=await niazApi('/session');if(!active.current)return;setPermissions(p);if(initialTab!=='workspace')await load(initialTab);});
   return()=>{generation.current++;};
  },[allowed,session.user?.uid]);
@@ -55,7 +65,7 @@ export default function NiazAdmin(){
  async function openEvent(eventId){const ticket=generation.current;const value=await niazApi('/event?eventId='+encodeURIComponent(eventId));if(active.current&&ticket===generation.current)setDetail(value);}
  async function exportRows(){
   const sheets={};for(const key of Object.keys(description).filter(key=>key!=='workspace')){
-   const all=[];let after='';for(let page=0;page<100;page++){const value=await niazApi('/'+key+(key==='dashboard'?'?month='+month:after?'?after='+encodeURIComponent(after):''));all.push(...value.items);after=value.next;if(!after)break;if(page===99)throw Error('Export exceeds 10,000 records. Narrow the report.');}
+   const all=[];let after='';for(let page=0;page<100;page++){const value=key==='dashboard'?await dashboardRows():await niazApi('/'+key+(after?'?after='+encodeURIComponent(after):''));all.push(...value.items);after=value.next;if(!after)break;if(page===99)throw Error('Export exceeds 10,000 records. Narrow the report.');}
    sheets[description[key]]=all;
   }
   if(permissions?.finance){
@@ -87,7 +97,7 @@ export default function NiazAdmin(){
    </fieldset><p>Delivery uses the existing connected Gmail mailbox. No SMS sender or additional payment processor is introduced.</p>
   </form>}
   {!['settings','workspace'].includes(tab)&&!draft&&!detail&&!importData&&<>
-   {tab==='dashboard'&&<form className="registration-editor" onSubmit={e=>{e.preventDefault();run(()=>load('dashboard'));}}><label>Programme month (Sydney)<input type="month" required value={month} onChange={e=>setMonth(e.target.value)}/></label><div className="registration-actions"><button type="button" className="btn alt" onClick={()=>setMonth('')}>Clear</button><button type="button" className="btn alt" onClick={()=>changeTab('eois')}>Cancel</button><button className="btn alt" disabled={busy}>Refresh monthly dashboard</button></div><p>Use search for compatible badges such as No sponsor, EOI pending, MWA arranged or Arrangement confirmed.</p></form>}
+   {tab==='dashboard'&&<form className="registration-editor" onSubmit={e=>{e.preventDefault();run(()=>load('dashboard'));}}><NiazMonthPicker mode={monthMode} value={month} onModeChange={value=>run(async()=>{const overrides=value==='hijri'?(await getHijriSettings()).overrides||[]:[];setMonthOverrides(overrides);setMonthMode(value);setMonth(currentMonthKey(value,overrides));setRows([]);})} onChange={value=>{setMonth(value);setRows([]);}}/><div className="registration-actions"><button type="button" className="btn alt" onClick={()=>{setMonth(currentMonthKey(monthMode,monthOverrides));setRows([]);}}>Clear</button><button type="button" className="btn alt" onClick={()=>changeTab('eois')}>Cancel</button><button className="btn alt" disabled={busy}>Refresh monthly dashboard</button></div>{monthMode==='hijri'&&<p className="niaz-hint">Hijri months follow Calendar Management settings and may change after moon sighting.</p>}<p>Use search for compatible badges such as No sponsor, EOI pending, MWA arranged or Arrangement confirmed.</p></form>}
    <div className="registration-actions niaz-directory-tools">{tab==='assignments'&&<button className="btn alt" onClick={()=>run(async()=>{await niazApi('/export-audit',{reports:['Filtered sponsorship history']});download(await workbook({'Sponsorship History':filtered}),'MWA Sponsorship History.xlsx');})}><Download size={16}/>Export filtered history</button>}<button className="btn alt" type="button" aria-label="Filter records" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}><Filter size={17}/>Filters</button>
    {tab==='sponsors'&&<>{permissions?.manage&&<><button className="btn" onClick={()=>setDraft(empty())}><Plus size={16}/>Create</button><button className="btn alt" onClick={()=>run(async()=>download(await importTemplate(),'mwa-niaz-import-template.xlsx'))}><FileSpreadsheet size={16}/>Download Import Template</button><button className="btn alt" onClick={()=>importFile.current?.click()}>Import</button><input ref={importFile} hidden type="file" accept=".xlsx,.csv" onChange={e=>{const file=e.target.files[0];e.target.value='';if(file)run(async()=>{const value=await readImport(file);setImportData(value);setMapping(importMapping(value.headers));});}}/></>}<button className="btn alt" disabled={busy} onClick={()=>run(async()=>{await niazApi('/export-audit',{reports:['Filtered sponsor directory']});download(await workbook({'Sponsors':filtered}),'MWA Niaz Sponsors.xlsx');})}><Download size={16}/>Export sponsors</button></>}</div>
    {filtersOpen&&<div className="niaz-filters"><label>Search<input placeholder="Name, email, mobile or event" value={query} onChange={e=>setQuery(e.target.value)} type="search"/></label>{tab!=='sponsors'&&<label>Year<input value={year} onChange={e=>setYear(e.target.value)} placeholder="All years"/></label>}{tab==='assignments'&&<><label>From date<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label>To date<input type="date" min={from} value={to} onChange={e=>setTo(e.target.value)}/></label></>}<label>Status<select aria-label="Status" value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option>{(tab==='sponsors'?['active','inactive']:['pending','approved','rejected','withdrawn','proposed','paused','cancelled','fulfilled']).map(value=><option value={value} key={value}>{value[0].toUpperCase()+value.slice(1)}</option>)}</select></label><button className="btn alt" onClick={()=>{setQuery('');setYear('');setStatus('');setFrom('');setTo('');}}>Clear filters</button></div>}
