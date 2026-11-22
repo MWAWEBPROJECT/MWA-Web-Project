@@ -1956,3 +1956,5 @@ The user asked for the same Gregorian/Hijri month selector in the Monthly Progra
 The final combined Website and embedded Calendar production build passed after the shared picker refactor. Hosting deployment and Git push remain pending; no live sponsorship record was changed during this work.
 
 Release check: `hosting:website` deployed successfully to Firebase project `project-7a4fb531-414f-4ade-88e`; `/admin-login?module=niaz&tab=dashboard` returned HTTP **200**. The authenticated controls still need a real admin browser check. Source and handover Git push status follows below.
+
+Git follow-up: source, boundary test and handover were committed as **4006e18** and pushed to `MWAWEBPROJECT/MWA-Web-Project` `main` on 22 November 2026. Signed-in visual and interaction verification remains outstanding.
