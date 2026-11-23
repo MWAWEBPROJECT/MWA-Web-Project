@@ -3,8 +3,13 @@
 
 # MWA Web Project — Codex / Copilot handover
 
-## Niaz assignment table follows selected event — 23 November 2026
+## Niaz assignment review placement — 23 November 2026
 
+Moved the “Review before saving” preview inside Assignment details, immediately above the Clear, Cancel, Review assignments and Assign sponsorship buttons. The preview appears after the user chooses Review assignments, so they can read each event’s new/existing sponsor counts and any sole-to-joint change before confirming. Added a polite status announcement for assistive technology. The assignment API, validation, save behaviour and data are unchanged.
+
+Affected file: Website/website/NiazAssignmentWorkspace.jsx. Integrated Website/Calendar production build and `git diff --check` passed. Firebase `hosting:website` deployment completed in project `project-7a4fb531-414f-4ade-88e` (site `mwa-community-web`); authenticated visual acceptance remains outstanding. Git commit/push is pending at this checkpoint.
+
+## Niaz assignment table follows selected event — 23 November 2026
 User screenshot showed 6th Muharram selected while Current assignments displayed an assignment for 5th Muharram. The table used an event-ID OR sponsor-ID filter, so a sponsor still selected in the right pane brought in that sponsor's other event assignments. Changed the table to prioritise selected event IDs; when no event is selected, sponsor-only selection still shows that sponsor's approved assignments. The heading now names the active selection and an unassigned event displays an explicit no-approved-assignment message. Changing a selection closes any open assignment editor. No assignment record, permission, server API or approval logic changed.
 
 Affected files: Website/website/NiazAssignmentWorkspace.jsx, new niaz-assignment-visibility.mjs and focused test. Regression reproducing the selected-6th/previous-sponsor scenario passed (2/2); the existing Hijri month test passed (1/1). Combined Website/Calendar production build and git diff --check passed. No live assignment was created or edited. Firebase hosting:website deployment succeeded in project project-7a4fb531-414f-4ade-88e; the refreshed Niaz workspace route returned HTTP 200. A real signed-in selection check remains outstanding. Git push remains pending at this checkpoint.
