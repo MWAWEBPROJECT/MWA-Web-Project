@@ -3,6 +3,12 @@
 
 # MWA Web Project — Codex / Copilot handover
 
+## Niaz assignment table follows selected event — 23 November 2026
+
+User screenshot showed 6th Muharram selected while Current assignments displayed an assignment for 5th Muharram. The table used an event-ID OR sponsor-ID filter, so a sponsor still selected in the right pane brought in that sponsor's other event assignments. Changed the table to prioritise selected event IDs; when no event is selected, sponsor-only selection still shows that sponsor's approved assignments. The heading now names the active selection and an unassigned event displays an explicit no-approved-assignment message. Changing a selection closes any open assignment editor. No assignment record, permission, server API or approval logic changed.
+
+Affected files: Website/website/NiazAssignmentWorkspace.jsx, new niaz-assignment-visibility.mjs and focused test. Regression reproducing the selected-6th/previous-sponsor scenario passed (2/2); the existing Hijri month test passed (1/1). Combined Website/Calendar production build and git diff --check passed. No live assignment was created or edited. Firebase hosting:website deployment succeeded in project project-7a4fb531-414f-4ade-88e; the refreshed Niaz workspace route returned HTTP 200. A real signed-in selection check remains outstanding. Git push remains pending at this checkpoint.
+
 ## Notification code review and EC matrix — 23 November 2026
 
 Reviewed the current outgoing notification paths across the canonical Centralised Calendar and Website code without changing application code, mail settings, Firebase configuration, records or delivery. Created Project Documentation/2. Tech Docs/MWA Notification Review Matrix.xlsx for EC review. It has 38 source-linked rows across Events & Booking, Calendar Management, Contact & Enquiries, Niaz, sandbox Donations, Form Builder, Admin Team and Media/CMS; a 10-item decision register; and scope/reading notes. The yellow decision cells let reviewers select Keep, Change, Remove, Add or Discuss. It separates code-wired messages from deliberately silent actions and unimplemented proposals. The workbook does not claim a live email was delivered or that Niaz delivery is enabled in production.
