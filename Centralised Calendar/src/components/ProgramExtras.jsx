@@ -36,7 +36,7 @@ export function ProgramExtrasSummary({ event, extras, onManage, canManageNiaz=fa
   return (
     <div className="card program-extras" style={{ marginTop: 14 }}>
       <div className="muted" style={{ marginBottom: 6 }}>Admin details. Only consented sponsor names may appear publicly.</div>
-      {event.status==='confirmed'&&event.visibility==='public'&&<NiazCardSponsors eventId={event.id} canManage={canManageNiaz} onManage={onManage?()=>onManage('niaz'):undefined} refreshKey={niazRefreshKey}/>}
+      <NiazCardSponsors eventId={event.id} canManage={canManageNiaz} onManage={onManage?()=>onManage('niaz'):undefined} refreshKey={niazRefreshKey}/>
       {Object.entries(EXTRA_SECTIONS).map(([key, sec]) => {
         const items = sec.single ? (data[key] ? [data[key]] : []) : (data[key] || []);
         return (

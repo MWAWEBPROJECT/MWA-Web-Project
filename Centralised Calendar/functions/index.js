@@ -26,6 +26,8 @@ const { MIN_PUBLIC_LEAD_HOURS, validateBookingLeadTime } = require('./publicLead
 const { canSubmitBookingType } = require('./bookingTypePolicy');
 const { buildConflictResponse } = require('./conflictResponse');
 const { resolveBookingDates } = require('./hijriRecompute');
+const { sourceDateUpdate } = require('./bookingDateEdit');
+const { canMergeOccurrence, planRecurringConflicts } = require('./recurringConflictPlan');
 const { projectPublicEvent } = require('./publicProjection');
 const { generateOccurrences, RecurrenceError } = require('./recurrence');
 const { normalizeScope, selectSeriesTargets, retimeOccurrence } = require('./seriesScope');
@@ -225,7 +227,7 @@ async function bulkOverlaps(venueId, items, excludeIds, bufferHours) {
     const invalid=audienceError(vById.get(venueId),item.audience||'family');if(invalid)throw new HttpsError('failed-precondition',invalid);
     const hits = existing.filter(o => venueConflictReason({...item,venueId},o,vById.get(venueId),vById.get(o.venueId)) && rangesConflict({ ...item, _buf: candBuf }, o, 0));
     result.set(item.id, hits.map(o => o.id));
-    details.set(item.id, hits.map(o => ({ id: o.id, title: o.title || '', status: o.status, startAt: o.startAt, endAt: o.endAt, reason:venueConflictReason({...item,venueId},o,vById.get(venueId),vById.get(o.venueId)) })));
+    details.set(item.id, hits.map(o => ({ id: o.id, title: o.title || '', status: o.status, startAt: o.startAt, endAt: o.endAt, venueId: o.venueId, departmentName: o.departmentName, reason:venueConflictReason({...item,venueId},o,vById.get(venueId),vById.get(o.venueId)) })));
   }
   result.details = details;
   return result;
@@ -725,20 +727,12 @@ exports.updateBooking = onCall({ cors: true, secrets: emailSecrets }, async (req
     update.venueName = venue.name;
   }
 
-  // Preserve-source-date rule: if this booking was Hijri-sourced and the admin
-  // is now setting a startAt/endAt that differs from what its source hijriDate
-  // currently resolves to, that's an explicit manual reschedule â€” detach it
-  // from the Hijri anchor (switch to dateBasis 'gregorian', clear hijriDate) so
-  // a later moon-sighting adjustment doesn't silently move it again. If the
-  // edit didn't touch the date/time, the Hijri anchor is left untouched.
-  if (before.dateBasis === 'hijri' && before.hijriDate) {
-    const overrides = await getHijriOverrides();
-    const resolvedBefore = resolveBookingDates(before, overrides);
-    // Compare civil dates only: a time-of-day edit keeps the Hijri anchor (the resolver preserves time-of-day).
-    if (dateKeyOf(update.startAt) !== dateKeyOf(resolvedBefore.startAt) || dateKeyOf(update.endAt) !== dateKeyOf(resolvedBefore.endAt)) {
-      update.dateBasis = 'gregorian';
-      update.hijriDate = null;
-    }
+  // The editor sends its chosen calendar explicitly. Keep Hijri edits anchored;
+  // older callers without a basis still use the previous detach-on-move rule.
+  try {
+    Object.assign(update, sourceDateUpdate(before, patch, update.startAt, await getHijriOverrides(), scope, dateKeyOf));
+  } catch (error) {
+    throw new HttpsError('invalid-argument', error.message);
   }
 
   if (update.venueId !== before.venueId || update.startAt !== before.startAt || update.endAt !== before.endAt || update.audience !== before.audience) {
@@ -880,9 +874,9 @@ async function expandSeries(data) {
 // â”€â”€ Callable: admin-only preview of a series (exact count, dates, per-occurrence conflicts) â”€â”€
 exports.previewRecurringBooking = onCall({ cors: true }, async (request) => {
   await requireAdmin(request.auth);
-  const { occurrences, refs, overlapMap } = await expandSeries(request.data || {});
+  const { occurrences, refs, overlapMap, venue, department } = await expandSeries(request.data || {});
   const items = occurrences.map((o, i) => {
-    const conflicts = overlapMap.details.get(refs[i].id) || [];
+    const conflicts = (overlapMap.details.get(refs[i].id) || []).map(conflict => ({ ...conflict, canMerge: canMergeOccurrence(o, conflict, venue.id, department.name) }));
     return {
       index: o.index, startAt: o.startAt, endAt: o.endAt,
       hijri: o.hijriDisplay || o.hijriDate || null,
@@ -897,8 +891,14 @@ exports.createRecurringBooking = onCall({ cors: true, secrets: emailSecrets }, a
   const data = request.data || {};
   const { venue, department, occurrences, refs, overlapMap } = await expandSeries(data);
 
-  const status = 'confirmed';
-  if([...overlapMap.values()].some(ids=>ids.length))throw new HttpsError('failed-precondition','Resolve overlapping bookings before creating an admin series.');
+  let plan;
+  try { plan = planRecurringConflicts(occurrences, refs, overlapMap, data.conflictDecisions || [], venue.id, department.name); }
+  catch (error) { throw new HttpsError('failed-precondition', error.message); }
+  const createdPlan = plan.filter(item => item.action !== 'skip');
+  const pendingMerges = createdPlan.filter(item => item.action === 'merge').length;
+  const pendingReviews = createdPlan.filter(item => item.action === 'review').length;
+  const skipped = plan.length - createdPlan.length;
+  const status = pendingMerges || pendingReviews ? 'pending' : 'confirmed';
   const visibility = sanitizeVisibility(data.visibility) || 'public';
   const rule = data.recurrence;
   const seriesId = db.collection('events').doc().id;
@@ -914,7 +914,7 @@ exports.createRecurringBooking = onCall({ cors: true, secrets: emailSecrets }, a
   };
 
   let conflicts = 0;
-  const writes = occurrences.map((o, i) => {
+  const writes = createdPlan.map(({occurrence:o,position:i,action,existingId}) => {
     const ids = overlapMap.get(refs[i].id) || [];
     if (ids.length) conflicts += 1;
     return (batch) => batch.set(refs[i], {
@@ -922,7 +922,7 @@ exports.createRecurringBooking = onCall({ cors: true, secrets: emailSecrets }, a
       departmentId: data.departmentId, departmentName: department.name,
       venueId: data.venueId, venueName: venue.name,
       startAt: o.startAt, endAt: o.endAt,
-      status, visibility, requestedVisibility: visibility,
+      status: action === 'merge' || action === 'review' ? 'pending' : 'confirmed', visibility: action === 'merge' || action === 'review' ? 'private' : visibility, requestedVisibility: visibility,
       dateBasis: recurrence.basis, hijriDate: o.hijriDate, timeMode: recurrence.timeMode,
       ...programFields(data),
       contactName: String(data.contactName).slice(0, 200),
@@ -931,38 +931,40 @@ exports.createRecurringBooking = onCall({ cors: true, secrets: emailSecrets }, a
       notes: data.notes ? String(data.notes).slice(0, 2000) : '',
       hasConflict: ids.length > 0, conflictWith: ids,
       seriesId, seriesIndex: o.index, seriesCount: occurrences.length, recurrence,
+      ...(action === 'merge' ? { mergeCandidateId: existingId } : {}),
       createdByUid: admin.uid,
       createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp()
     });
   });
   await commitInChunks(writes);
-  const conflictChanges = occurrences.map((occurrence, index) => ({
-    id: refs[index].id,
+  const conflictChanges = createdPlan.map(({occurrence,position,action}) => ({
+    id: refs[position].id,
     after: {
       venueId: data.venueId, audience:normalizeAudience(data.audience),
       startAt: occurrence.startAt,
       endAt: occurrence.endAt,
-      status,
+      status: action === 'merge' || action === 'review' ? 'pending' : 'confirmed',
       conflictWith: []
     }
   }));
   for (let offset = 0; offset < conflictChanges.length; offset += CONFLICT_REFRESH_BATCH_SIZE) {
     await refreshConflictNeighborhood(conflictChanges.slice(offset, offset + CONFLICT_REFRESH_BATCH_SIZE));
   }
-  conflicts = (await db.getAll(...refs)).filter(doc => doc.exists && doc.data().hasConflict).length;
+  conflicts = (await db.getAll(...createdPlan.map(item => refs[item.position]))).filter(doc => doc.exists && doc.data().hasConflict).length;
   await writeAudit({
     entityType: 'series', entityId: seriesId, action: 'series_created',
     userId: admin.uid, userEmail: admin.email,
-    note: `Created ${occurrences.length} recurring occurrence(s) as ${status}; ${conflicts} flagged with a venue overlap.`,
-    diff: { recurrence }
+    note: `Created ${createdPlan.length} recurring occurrence(s); ${skipped} existing programme date(s) kept, ${pendingMerges} awaiting merge review, ${pendingReviews} awaiting schedule review.`,
+    diff: { recurrence, skipped, pendingMerges, pendingReviews }
   });
   // Row 8: one summary email per series (not per occurrence), only when a contact email was entered.
-  if (occurrences.length) {
-    const first = { ...data, venueName: venue.name, departmentName: department.name, ...programFields(data), startAt: occurrences[0].startAt, endAt: occurrences[0].endAt, timeMode: recurrence.timeMode };
+  if (createdPlan.length) {
+    const firstOccurrence = createdPlan[0].occurrence;
+    const first = { ...data, venueName: venue.name, departmentName: department.name, ...programFields(data), startAt: firstOccurrence.startAt, endAt: firstOccurrence.endAt, timeMode: recurrence.timeMode };
     const sHijri = hijriInfoFor(dateKeyOf(first.startAt), await getHijriOverrides());
-    await sendAll([notify.seriesCreatedRequester(first, sHijri, { count: occurrences.length, lastStartAt: occurrences[occurrences.length - 1].startAt, status })]);
+    await sendAll([notify.seriesCreatedRequester(first, sHijri, { count: createdPlan.length, lastStartAt: createdPlan[createdPlan.length - 1].occurrence.startAt, status, pendingMerges, pendingReviews, skipped })]);
   }
-  return { seriesId, created: occurrences.length, conflicts, status };
+  return { seriesId, created: createdPlan.length, skipped, pendingMerges, pendingReviews, conflicts, status, mergePairs: createdPlan.filter(item => item.action === 'merge').map(item => ({ newId: refs[item.position].id, existingId: item.existingId })) };
 });
 
 // Callable: admin-only programme extras (reciters, volunteers, expenses).

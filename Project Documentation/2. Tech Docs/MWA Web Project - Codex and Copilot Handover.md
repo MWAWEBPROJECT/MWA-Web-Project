@@ -3,6 +3,16 @@
 
 # MWA Web Project — Codex / Copilot handover
 
+## Release checkpoint — 27 November 2026
+
+The 23 November event-date editor, admin sponsor visibility and Niaz joint-role changes were built and deployed (Firebase updateBooking, websiteCmsApi and website Hosting) before a tool approval limit interrupted documentation and Git work. The corresponding source files remain modified and uncommitted in the canonical checkout. No live booking or sponsor record was modified during verification. A notification-review spreadsheet is modified independently; preserve it and exclude it from this release.
+
+## Admin recurring-series clash choices — 27 November 2026
+
+MWA Ramadan Iftar series could fail entirely when an existing programme occupied one date. Admins now preview every generated occurrence and must explicitly choose per clash: keep the existing programme and omit that new occurrence; create a private pending occurrence and open the existing two-programme merge review when exactly one overlapping MWA programme in the same venue is eligible; or create a private pending occurrence for separate scheduling review. Non-conflicting dates are confirmed. Nothing is merged or deleted automatically. The server regenerates the series and conflicts before writing and rejects missing, duplicate, stale or ineligible choices. Merge review still requires the admin to choose the surviving record and linked-data transfers; its existing 320-document/450-write safety limit remains. The summary email and audit identify skipped dates and pending review counts. No production booking record was created during development.
+
+Affected: `Centralised Calendar/functions/index.js`, `functions/notifications.js`, new `functions/recurringConflictPlan.js` and tests, `src/components/BookingModal.jsx`, `EventMergeModal.jsx`, styles and affected import tests. Focused Calendar tests passed **15/15** (Vite emitted sandbox cache-write EPERM diagnostics, but all assertions passed); Niaz access/API and date-picker tests passed **45/45**; backend syntax and `git diff --check` passed. The combined Website and embedded Calendar production build passed. Firebase successfully deployed `previewRecurringBooking` and `createRecurringBooking` in `australia-southeast1`, followed by `hosting:website` on `mwa-community-web`, all in project `project-7a4fb531-414f-4ade-88e`. Git commit/push and authenticated production acceptance are pending at this checkpoint. A private pending scheduling-review occurrence still needs an admin to resolve it; it does not publish itself.
+
 ## Niaz assignment review placement — 23 November 2026
 
 Moved the “Review before saving” preview inside Assignment details, immediately above the Clear, Cancel, Review assignments and Assign sponsorship buttons. The preview appears after the user chooses Review assignments, so they can read each event’s new/existing sponsor counts and any sole-to-joint change before confirming. Added a polite status announcement for assistive technology. The assignment API, validation, save behaviour and data are unchanged.

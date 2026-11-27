@@ -398,6 +398,14 @@ async function importStep(db,jobId,offset,actor){
   return {offset:next,state};
  });
 }
+async function adminEventSponsors(db,eventId){
+ const source=await db.doc('events/'+M.id(eventId)).get();
+ if(!source.exists)throw M.fault(404,'Event unavailable.');
+ const assignments=await db.collection('niazSponsorships').where('eventId','==',eventId).where('status','==','approved').limit(501).get();
+ if(assignments.size>500)throw M.fault(413,'Too many assigned sponsors for one event.');
+ const sponsors=await Promise.all(assignments.docs.map(doc=>db.doc('niazSponsors/'+M.id(doc.data().sponsorId)).get()));
+ return {sponsors:sponsors.map(snap=>snap.exists?{name:snap.data().name}:{name:'Sponsor unavailable'})};
+}
 async function assignmentEvents(db,after=''){
  const page=await list(db,'events',after);
  return {items:page.items.filter(event=>M.eligible(event,event.id)&&event.visibility==='public').map(event=>({id:event.id,title:event.title,startAt:event.startAt,audience:event.audience||'family',seriesId:event.seriesId||''})),next:page.next};
@@ -431,6 +439,10 @@ async function handle(req,res,{db,getAuth,origins}){
    return res.json({items:eligible});
   }
   const person=await identity(req,db,getAuth);
+  if(path==='/admin-event-sponsors'&&req.method==='GET'){
+   if(!person.token||!await resolveAdmin(db,person.uid,person.token,'events-bookings'))throw M.fault(403,'Events & Booking administration access required.');
+   return res.json(await adminEventSponsors(db,M.id(req.query.eventId)));
+  }
   if(path==='/mine'&&req.method==='GET')return res.json(await own(db,person,{assignmentAfter:req.query.assignmentAfter||'',eoiAfter:req.query.eoiAfter||''}));
   if(path==='/eoi'&&req.method==='POST')return res.json(await submitEOI(db,input,person));
   if(path==='/eoi-edit'&&req.method==='POST')return res.json(await editOwnEOI(db,input,person));
@@ -493,4 +505,4 @@ async function handle(req,res,{db,getAuth,origins}){
   throw M.fault(404,'Niaz action not found.');
  }catch(error){console.error('Niaz request failed',{status:error.status||503,message:error.status?error.message:'Internal request failure'});return res.status(error.status||503).json({error:error.status?error.message:'Niaz is temporarily unavailable. No success is assumed; refresh before retrying.'});}
 }
-module.exports={handle,list,contextualList,saveSponsor,importContacts,assign,eventDetail,saveCoverage,submitEOI,decideEOI,proposeAlternative,own,previewImport,importStep,identity,audit,queue,assignmentEvents,editOwnEOI,dashboard,eoiList,acknowledgeAttention};
+module.exports={handle,list,contextualList,saveSponsor,importContacts,assign,eventDetail,adminEventSponsors,saveCoverage,submitEOI,decideEOI,proposeAlternative,own,previewImport,importStep,identity,audit,queue,assignmentEvents,editOwnEOI,dashboard,eoiList,acknowledgeAttention};

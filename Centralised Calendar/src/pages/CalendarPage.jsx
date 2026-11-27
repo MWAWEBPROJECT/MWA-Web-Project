@@ -279,7 +279,7 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
                     <button key={e.id} type="button" className="day-item" style={eventStyle(e)} onClick={() => setModal({ editing: e })}>
                       <span className="t">{timeKeyInOrgTz(e.startAt)}</span>
                       <span>
-                        <strong>{e.title}</strong>{e.status==='confirmed'&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt}/>}
+                        <strong>{e.title}</strong>{(isAdmin||e.status==='confirmed')&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt} isAdmin={isAdmin}/>}
                         <small>{e.venueName || venues.find(v => v.id === e.venueId)?.name || ''} · {e.status}{e.hasConflict ? ' · overlaps another booking' : ''}</small>
                       </span>
                     </button>
@@ -321,7 +321,7 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
               selectedEvents.map(e => (
                 <button key={e.id} type="button" className="agenda-item booking-outlined" style={eventStyle(e)} onClick={() => setModal({ editing: e })}>
                   <span>
-                    <strong>{e.title}</strong>{e.status==='confirmed'&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt}/>}
+                    <strong>{e.title}</strong>{(isAdmin||e.status==='confirmed')&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt} isAdmin={isAdmin}/>}
                     <small>{timeKeyInOrgTz(e.startAt)} · {e.venueName || venues.find(v => v.id === e.venueId)?.name || ''}{e.status === 'pending' ? ' · pending' : ''}</small>
                   </span>
                 </button>
@@ -340,7 +340,7 @@ export default function CalendarPage({ events: rawEvents, venues, departments, i
             {isAdmin && pendingAll.slice(0, 3).map(e => (
               <button key={e.id} type="button" className="agenda-item booking-outlined" style={eventStyle(e)} onClick={() => setModal({ editing: e })}>
                 <span className="bar" style={{ background: 'var(--amber)' }} />
-                <span><strong>{e.title}</strong>{e.status==='confirmed'&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt}/>}<small>{dateKeyInOrgTz(e.startAt)} {timeKeyInOrgTz(e.startAt)}{e.hasConflict ? ' · conflict' : ''}</small></span>
+                <span><strong>{e.title}</strong>{(isAdmin||e.status==='confirmed')&&String(e.departmentName||'').toLowerCase()==='mwa programs'&&<NiazPublicSponsors compact eventId={e.id} startAt={e.startAt} isAdmin={isAdmin}/>}<small>{dateKeyInOrgTz(e.startAt)} {timeKeyInOrgTz(e.startAt)}{e.hasConflict ? ' · conflict' : ''}</small></span>
               </button>
             ))}
           </section>

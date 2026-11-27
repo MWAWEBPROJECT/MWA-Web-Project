@@ -4,7 +4,7 @@ import {niazCardApi} from '../services/niazCardService.js';
 export function NiazCardSponsors({eventId,canManage,onManage,refreshKey=0}){
  const [names,setNames]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(true);
  useEffect(()=>{let live=true;setLoading(true);setError('');
-  niazCardApi((canManage?'/event':'/public')+'?eventId='+encodeURIComponent(eventId)).then(data=>{
+  niazCardApi((canManage?'/event':'/admin-event-sponsors')+'?eventId='+encodeURIComponent(eventId)).then(data=>{
    if(live)setNames(canManage?data.assignments.filter(row=>row.status==='approved').map(row=>row.sponsor?.name||'Sponsor unavailable'):data.sponsors.map(row=>row.name));
   }).catch(problem=>{if(live)setError(problem.message)}).finally(()=>{if(live)setLoading(false)});
   return()=>{live=false};

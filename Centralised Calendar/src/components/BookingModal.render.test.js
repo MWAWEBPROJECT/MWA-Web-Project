@@ -19,7 +19,7 @@ test('booking gate hides booking fields for visitors and opens directly for auth
  },load(id){
   if(id==='\0booking-firebase')return 'export const auth={get currentUser(){return globalThis.__bookingUser||null}};';
   if(id==='\0booking-auth')return 'export const onAuthStateChanged=()=>()=>{};';
-  if(id==='\0booking-events')return 'export const '+['submitBooking','decideBooking','updateBookingScoped','createRecurringBooking','deleteBooking','checkSlotConflicts','previewRecurringBooking','startBookingVerification','verifyBookingEmailCode','verifyBookingMobile'].map(x=>x+'=async()=>({})').join(',')+';';
+  if(id==='\0booking-events')return 'export const '+['submitBooking','decideBooking','updateBookingScoped','createRecurringBooking','deleteBooking','checkSlotConflicts','previewRecurringBooking','startBookingVerification','verifyBookingEmailCode','verifyBookingMobile','fetchAllAdminBookings'].map(x=>x+'=async()=>({})').join(',')+';';
   if(id==='\0booking-phone')return 'export const clearBookingPhoneRecaptcha=()=>{},normalizeBookingPhone=x=>x,confirmBookingPhoneCode=async()=>{},sendBookingPhoneCode=async()=>{};';
   if(id==='\0booking-extras')return 'export const ProgramExtrasSummary=()=>null,ProgramExtrasEditor=()=>null;';
   if(id==='\0booking-niaz-card')return 'export const NiazCardSponsorEditor=()=>null;';

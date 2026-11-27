@@ -37,3 +37,15 @@ test('Server requires verified profile/module/expiry; new finance is not a legac
  res=response();await A.handle(request('/session','GET',{},'test'),res,opts);assert.equal(res.body.manage,true);assert.equal(res.body.finance,false);
  res=response();await A.handle(request('/sponsor','GET',{},'test'),res,opts);assert.equal(res.code,405);
 });
+test('Private event sponsor names require Events & Booking admin access',async()=>{
+ const email='reader@example.org',uid='synthetic-reader';
+ const records={['users/'+uid]:{role:'admin',email},['adminAllowlist/'+email]:{uid,modules:['niaz-read']},'calendarSettings/auth':{},'events/event1':{title:'Programme'}};
+ const base=dbFor(records);
+ const db={...base,collection:name=>({where:()=>({where:()=>({limit:()=>({get:async()=>({size:0,docs:[]})})})})})};
+ const token={uid,email,email_verified:true,firebase:{sign_in_provider:'google.com'}};
+ const opts={db,getAuth:()=>({verifyIdToken:async()=>token}),origins:new Set(['https://refreshed.muhammadiwelfare.org.au'])};
+ const req=request('/admin-event-sponsors','GET',{},'token');req.query={eventId:'event1'};
+ let res=response();await A.handle(req,res,opts);assert.equal(res.code,403);
+ records['adminAllowlist/'+email]={uid,modules:['events-bookings']};
+ res=response();await A.handle(req,res,opts);assert.equal(res.code,200);assert.deepEqual(res.body,{sponsors:[]});
+});

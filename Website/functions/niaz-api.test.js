@@ -31,6 +31,18 @@ test('assignment event index exposes only eligible public programme fields',asyn
  assert.deepEqual(Object.keys(result.items[0]).sort(),['audience','id','seriesId','startAt','title']);
  assert.equal(JSON.stringify(result).includes('private@example.org'),false);
 });
+test('Events admin sees approved private sponsor name while public response protects it',async()=>{
+ const db=database({
+  'events/event1':event,
+  'niazSponsors/private':{name:'Private Sponsor Name',active:true,publicConsent:false},
+  'niazSponsorships/assignment1':{eventId:'event1',sponsorId:'private',status:'approved',type:'one_time',role:'sole'}
+ });
+ const admin=await A.adminEventSponsors(db,'event1');
+ assert.deepEqual(admin,{sponsors:[{name:'Private Sponsor Name'}]});
+ assert.equal(JSON.stringify(admin).includes('publicConsent'),false);
+ const publicView=await A.eventDetail(db,'event1',{publicOnly:true});
+ assert.deepEqual(publicView.sponsors.map(row=>row.name),['Private sponsor']);
+});
 test('Sponsor contact import accepts name-only rows and skips existing email contacts without changing assignments',async()=>{
  const db=database();
  const rows=[{name:'Name Only',email:'',phone:'',notes:'',publicConsent:false,active:true},{name:'Phone Sponsor',email:'person@example.org',phone:'0412345678',notes:'',publicConsent:false,active:true}];

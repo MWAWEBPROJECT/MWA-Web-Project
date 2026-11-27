@@ -16,6 +16,8 @@ async function fixture({siteKey='synthetic-key',existing=false,failInit=false}={
   if(source==='../firebase/firebaseConfig.js')return '\0phone-config';
   if(source==='../firebase/firebase.js')return '\0phone-main-firebase';
   if(source==='../services/eventsService.js')return '\0phone-events';
+  if(source==='../contexts/AuthContext.jsx')return '\0phone-context';
+  if(source==='./EventMergeModal.jsx')return '\0phone-merge';
   if(source==='./ProgramExtras.jsx')return '\0phone-extras';
  },load(id){
   const state='const state=globalThis.__phoneAuthTest;';
@@ -24,7 +26,9 @@ async function fixture({siteKey='synthetic-key',existing=false,failInit=false}={
   if(id==='\0phone-phone-test/auth')return state+`export const getAuth=app=>{state.calls.push('getAuth');return {app};},inMemoryPersistence='memory',setPersistence=async()=>{state.calls.push('setPersistence');},signInWithPhoneNumber=async()=>{state.calls.push('signInWithPhoneNumber');return {confirm:async()=>({user:{getIdToken:async()=> 'synthetic-token'}})};},signOut=async()=>{state.calls.push('signOut');},onAuthStateChanged=()=>()=>{};export class RecaptchaVerifier{constructor(){state.calls.push('RecaptchaVerifier');}clear(){state.calls.push('clear');}}`;
   if(id==='\0phone-config')return 'export const firebaseConfig={};';
   if(id==='\0phone-main-firebase')return 'export const auth={currentUser:null};';
-  if(id==='\0phone-events')return 'export const '+['submitBooking','decideBooking','updateBookingScoped','createRecurringBooking','deleteBooking','checkSlotConflicts','previewRecurringBooking','startBookingVerification','verifyBookingEmailCode','verifyBookingMobile'].map(name=>name+'=async()=>({})').join(',')+';';
+  if(id==='\0phone-events')return 'export const '+['submitBooking','decideBooking','updateBookingScoped','createRecurringBooking','deleteBooking','checkSlotConflicts','previewRecurringBooking','startBookingVerification','verifyBookingEmailCode','verifyBookingMobile','fetchAllAdminBookings'].map(name=>name+'=async()=>({})').join(',')+';';
+  if(id==='\0phone-context')return 'export const useOptionalAuth=()=>null;';
+  if(id==='\0phone-merge')return 'export default function EventMergeModal(){return null}';
   if(id==='\0phone-extras')return 'export const ProgramExtrasSummary=()=>null,ProgramExtrasEditor=()=>null;';
  },transform(source,id){
   if(id.endsWith('/services/phoneBookingAuth.js'))return source.replaceAll("'firebase/","'phone-test/").replaceAll('import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY',JSON.stringify(siteKey));

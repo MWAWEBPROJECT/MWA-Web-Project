@@ -160,11 +160,11 @@ function deletionRequester(e, hijri, count = 1) {
 }
 
 // ── Row 8: admin-created series (one summary email) ─────────────────────
-function seriesCreatedRequester(e, hijri, { count, lastStartAt, status }) {
+function seriesCreatedRequester(e, hijri, { count, lastStartAt, status, pendingMerges = 0, pendingReviews = 0, skipped = 0 }) {
   if (!e.contactEmail) return null;
   return mail(e.contactEmail, `Booking ${status === 'confirmed' ? 'confirmed' : 'created'}: ${e.title}`, render({
     heading: status === 'confirmed' ? 'Your recurring booking is confirmed' : 'Your recurring booking has been created',
-    intro: `${count} occurrence(s) have been added to the calendar${count > 1 ? `, from ${fmtDate(e.startAt)} to ${fmtDate(lastStartAt)}` : ''}. The first one is shown below.`,
+    intro: `${count} occurrence(s) have been added to the calendar${count > 1 ? `, from ${fmtDate(e.startAt)} to ${fmtDate(lastStartAt)}` : ''}.${pendingMerges ? ` ${pendingMerges} overlapping occurrence(s) remain private and pending until an administrator completes merge review.` : ''}${pendingReviews ? ` ${pendingReviews} occurrence(s) remain private and pending scheduling review.` : ''}${skipped ? ` ${skipped} date(s) retain the existing programme instead of creating a second booking.` : ''} The first added occurrence is shown below.`,
     rows: detailRows(e, hijri)
   }));
 }

@@ -1,17 +1,19 @@
 import {audienceError} from '../utils/venuePolicy.js';
 import {AUDIENCES} from '../utils/audience.js';
 import AdminBackButton from './AdminBackButton.jsx';
+import BookingDatePicker from './BookingDatePicker.jsx';
+import EventMergeModal from './EventMergeModal.jsx';
 import {auth} from '../firebase/firebase.js';
 import {onAuthStateChanged} from 'firebase/auth';
 import ContactVerification from './ContactVerification.jsx';
 import {contactError,verificationPhone} from '../utils/contactVerification.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { HIJRI_MONTHS, hijriToGregorian, getHijriParts, getTodayHijriParts } from '../services/hijriService.js';
+import { HIJRI_MONTHS, hijriToGregorian, getHijriParts, getHijriMonthLength } from '../services/hijriService.js';
 import { localToUtcIso, formatInOrgTz, dateKeyInOrgTz, timeKeyInOrgTz } from '../utils/dateUtils.js';
 import { adjustPublicBookingStart, earliestAllowedPublicStart, MIN_PUBLIC_LEAD_HOURS } from '../utils/publicLeadTime.js';
 import {
-  submitBooking, decideBooking, updateBookingScoped, createRecurringBooking, deleteBooking,
+  submitBooking, decideBooking, updateBookingScoped, createRecurringBooking, deleteBooking, fetchAllAdminBookings,
   checkSlotConflicts, previewRecurringBooking, startBookingVerification,
   verifyBookingEmailCode, verifyBookingMobile
 } from '../services/eventsService.js';
@@ -71,7 +73,7 @@ export function BookingModalInner({
   const [savedBooking, setSavedBooking] = useState(null);
   const editing = savedBooking || selectedBooking;
   const canManageNiaz=!!isAdmin&&!!adminSession?.canAccess('niaz')&&!!editing&&editing.status==='confirmed'&&editing.visibility==='public';
-  const [form, setForm] = useState(() => emptyForm(editing, initialDate, isAdmin));
+  const [form, setForm] = useState(() => emptyForm(editing, initialDate, isAdmin, hijriOverrides));
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
   const [busy, setBusy] = useState(false);
@@ -87,6 +89,9 @@ export function BookingModalInner({
   const [conflict, setConflict] = useState(null);
   const [conflictErr, setConflictErr] = useState('');
   const [preview, setPreview] = useState(null);
+  const [conflictChoices, setConflictChoices] = useState({});
+  const [mergeQueue, setMergeQueue] = useState([]);
+  const [mergeEventsList, setMergeEventsList] = useState([]);
   const [protectionWarning, setProtectionWarning] = useState('');
   const [verificationMethod, setVerificationMethod] = useState('email');
   const [bookingVerification, setBookingVerification] = useState(null);
@@ -108,9 +113,9 @@ export function BookingModalInner({
 
   useEffect(() => {
     setSavedBooking(null);
-    setForm(emptyForm(selectedBooking, initialDate, isAdmin));
+    setForm(emptyForm(selectedBooking, initialDate, isAdmin, hijriOverrides));
     setErr(''); setOk(''); setLocked(false); setEditMode(false); setScope('single'); setWaiveBuffer(false);
-    setRep(DEFAULT_REPEAT); setConflict(null); setPreview(null);
+    setRep(DEFAULT_REPEAT); setConflict(null); setPreview(null); setConflictChoices({}); setMergeQueue([]); setMergeEventsList([]);
     setProtectionWarning(''); setExtras(null); setExtrasSection(null);
     setBookingVerification(null); setVerificationCode(''); setPhoneConfirmation(null); setPhoneIdToken('');
     setResendAt(0);
@@ -145,15 +150,22 @@ export function BookingModalInner({
   const gregorianDate = useMemo(() => {
     if (form.basis === 'g') return form.date;
     if (!form.hDay || !form.hMonth || !form.hYear) return '';
-    return hijriToGregorian(Number(form.hDay), Number(form.hMonth), Number(form.hYear), hijriOverrides) || '';
+    const day = Number(form.hDay), month = Number(form.hMonth), year = Number(form.hYear);
+    if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year) || month < 1 || month > 12 || year < 1 || day < 1 || day > getHijriMonthLength(year, month, hijriOverrides)) return '';
+    return hijriToGregorian(day, month, year, hijriOverrides) || '';
   }, [form.basis, form.date, form.hDay, form.hMonth, form.hYear, hijriOverrides]);
-  // Switching to Hijri entry pre-fills empty day/month/year from today's Hijri date (Sydney civil date, active adjustment).
+  // Keep the selected civil day when switching calendars; only the date basis changes.
   function switchBasis(basis) {
-    set('basis', basis);
-    if (basis !== 'h') return;
-    const h = getTodayHijriParts(hijriOverrides);
-    if (!h.year) return;
-    setForm(f => ({ ...f, basis, hDay: f.hDay || String(h.day), hMonth: f.hDay ? f.hMonth : String(h.month), hYear: f.hYear || String(h.year) }));
+    if (basis === form.basis) return;
+    const date = gregorianDate || form.date || todayStr();
+    const h = getHijriParts(date, hijriOverrides);
+    setForm(f => ({ ...f, basis, date, ...(h.year ? { hDay: String(h.day), hMonth: String(h.month), hYear: String(h.year) } : {}) }));
+    setLocked(false); setPreview(null); setProtectionWarning('');
+  }
+  function chooseCalendarDay(date) {
+    const h = getHijriParts(date, hijriOverrides);
+    setForm(f => ({ ...f, date, hDay: String(h.day), hMonth: String(h.month), hYear: String(h.year) }));
+    setLocked(false); setPreview(null); setProtectionWarning('');
   }
 
 
@@ -257,10 +269,10 @@ export function BookingModalInner({
     setLocked(false); setPreview(null); setProtectionWarning('');
   }
   function clearForm() {
-    setForm(emptyForm(null, initialDate, isAdmin));
+    setForm(emptyForm(null, initialDate, isAdmin, hijriOverrides));
     setRep(DEFAULT_REPEAT); setErr(''); setOk(''); setLocked(false); setConflict(null); setPreview(null);
   }
-  function cancelEdit() { setForm(emptyForm(editing, initialDate, isAdmin)); setEditMode(false); setErr(''); setOk(''); }
+  function cancelEdit() { setForm(emptyForm(editing, initialDate, isAdmin, hijriOverrides)); setEditMode(false); setErr(''); setOk(''); }
   // Leaving Variable time on both sides returns to a same-day Fixed window.
   function setKind(side, kind) {
     setForm(f => {
@@ -428,6 +440,7 @@ export function BookingModalInner({
             {!editing.masked && editing.programDetails && <div className="pre-wrap"><b>Program details:</b> {editing.programDetails}</div>}
             {isAdmin && (
               <>
+                <div><b>Date based on:</b> {editing.dateBasis === 'hijri' || editing.dateBasis === 'h' ? 'Hijri' : 'Gregorian'}</div>
                 {editing.seriesId && <div><b>Series:</b> occurrence {editing.seriesIndex || '?'} of {editing.seriesCount || '?'}</div>}
                 <div><b>Visibility:</b> {editing.visibility === 'public' ? 'Public' : 'Private'}</div>
                 {(editing.contactName || editing.contactEmail) && (
@@ -477,15 +490,20 @@ export function BookingModalInner({
     setBusy(true);
     try {
       if (!confirmed) {
-        setPreview(await previewRecurringBooking(seriesPayload()));
+        const value = await previewRecurringBooking(seriesPayload());
+        setPreview(value); setConflictChoices({});
         return;
       }
-      const res = await createRecurringBooking(seriesPayload());
-      setOk(`Created ${res.created} occurrence(s) as ${res.status}.` +
-        (res.conflicts ? ` ${res.conflicts} overlap another booking at this venue and are flagged for review.` : ''));
+      const conflictDecisions = Object.entries(conflictChoices).map(([index, choice]) => ({ index: Number(index), ...choice }));
+      const res = await createRecurringBooking({ ...seriesPayload(), conflictDecisions });
+      setOk(`Created ${res.created} occurrence(s).` + (res.skipped ? ` ${res.skipped} date(s) kept their existing programme.` : '') + (res.pendingMerges ? ` ${res.pendingMerges} occurrence(s) are private and pending merge review.` : '') + (res.pendingReviews ? ` ${res.pendingReviews} occurrence(s) are private and pending scheduling review.` : ''));
       setPreview(null);
       setLocked(true);
       onSaved && onSaved();
+      if (res.mergePairs?.length) {
+        try { setMergeEventsList(await fetchAllAdminBookings()); setMergeQueue(res.mergePairs); }
+        catch { setErr('The series was created, but merge review could not open. The overlapping occurrences remain private and pending; use Admin → Merge two programmes to finish them.'); }
+      }
     } catch (e2) {
       setErr(e2?.message || 'Could not create the recurring booking.');
     } finally { setBusy(false); }
@@ -557,7 +575,7 @@ export function BookingModalInner({
       const result = await updateBookingScoped(editing.id, patch, isSeries ? scope : 'single');
       const updated = bookingWithPatch(patch, result);
       setSavedBooking(updated);
-      setForm(emptyForm(updated, initialDate, isAdmin));
+      setForm(emptyForm(updated, initialDate, isAdmin, hijriOverrides));
       setOk('Booking updated.');
       setLocked(true);
       setEditMode(false);
@@ -577,7 +595,7 @@ export function BookingModalInner({
     setBusy(true);
     try {
       let current = editing;
-      const baseline = emptyForm(editing, initialDate, isAdmin);
+      const baseline = emptyForm(editing, initialDate, isAdmin, hijriOverrides);
       const detailsChanged = Object.keys(form).some(k => k !== 'decisionNote' && form[k] !== baseline[k]);
       if (detailsChanged) {
         if (!range || new Date(range.endAt) <= new Date(range.startAt)) {
@@ -601,7 +619,7 @@ export function BookingModalInner({
         bufferOverride: result.bufferWaived ? { reason: form.decisionNote.trim(), venueId: current.venueId, startAt: current.startAt, endAt: current.endAt } : current.bufferOverride
       };
       setSavedBooking(updated);
-      setForm(emptyForm(updated, initialDate, isAdmin));
+      setForm(emptyForm(updated, initialDate, isAdmin, hijriOverrides));
       setLocked(true);
       setWaiveBuffer(false);
       setEditMode(false);
@@ -613,10 +631,14 @@ export function BookingModalInner({
   }
 
   const repeating = isAdmin && !editing && rep.on;
+  const unresolvedSeriesConflicts = preview?.occurrences.filter(item => item.hasConflict && !conflictChoices[item.index]).length || 0;
+  const skippedSeriesDates = preview?.occurrences.filter(item => conflictChoices[item.index]?.action === 'skip').length || 0;
 
   function adminPatch() {
     return {
       timeMode: form.timeMode,
+      dateBasis: form.basis === 'h' ? 'hijri' : 'gregorian',
+      hijriDate: form.basis === 'h' ? { day: Number(form.hDay), month: Number(form.hMonth), year: Number(form.hYear) } : null,
       title: form.title, departmentId: form.departmentId, venueId: form.venueId, audience: form.audience,
       ...range, notes: form.notes,
       contactName: form.contactName, contactEmail: form.contactEmail, contactPhone: form.contactPhone,
@@ -626,13 +648,12 @@ export function BookingModalInner({
   }
 
   function bookingWithPatch(patch, result) {
-    const moved = dateKeyInOrgTz(patch.startAt) !== dateKeyInOrgTz(editing.startAt);
     return {
       ...editing, ...patch,
       departmentName: departments.find(d => d.id === patch.departmentId)?.name || editing.departmentName,
       venueName: venues.find(v => v.id === patch.venueId)?.name || editing.venueName,
       hijri: getHijriParts(dateKeyInOrgTz(patch.startAt), hijriOverrides),
-      ...(moved ? { dateBasis: 'gregorian', hijriDate: null } : {}),
+      dateBasis: patch.dateBasis, hijriDate: patch.hijriDate,
       hasConflict: result.hasConflict
     };
   }
@@ -667,44 +688,37 @@ export function BookingModalInner({
               </div>
             </div>
 
-            {!editing && (
-              <>
-                <label>Date based on</label>
-                <select value={form.basis} onChange={e => switchBasis(e.target.value)}>
-                  <option value="g">Gregorian</option>
-                  <option value="h">Hijri (Islamic)</option>
-                </select>
-              </>
-            )}
+            <label htmlFor="booking-date-basis">Date based on</label>
+            <select id="booking-date-basis" value={form.basis} onChange={e => switchBasis(e.target.value)}>
+              <option value="g">Gregorian</option>
+              <option value="h">Hijri (Islamic)</option>
+            </select>
 
-            {form.basis === 'g' || editing ? (
+            {form.basis === 'g' ? (
               <>
                 <label>{repeating ? 'First date' : 'Date'}</label>
                 <input type="date" value={form.date} onChange={e => set('date', e.target.value)} required />
                 {hijriPreview && <div className="muted">≈ {hijriPreview} (moon-sighting adjustment applied)</div>}
-                {editing && editing.dateBasis === 'hijri' && (
-                  <div className="muted">
-                    This booking is anchored to its Hijri date — its Gregorian date is recomputed automatically if the moon-sighting adjustment changes. Changing the date here will detach it and fix it to this Gregorian date instead.
-                  </div>
-                )}
+                {editing && <div className="muted">Gregorian based: this date remains fixed if the Hijri calendar is adjusted.</div>}
               </>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr 90px', gap: 10 }}>
-                <div><label>Day</label><input type="number" min="1" max="30" value={form.hDay} onChange={e => set('hDay', e.target.value)} /></div>
+                <div><label>Day</label><input type="number" min="1" max={getHijriMonthLength(Number(form.hYear), Number(form.hMonth), hijriOverrides) || 30} value={form.hDay} onChange={e => set('hDay', e.target.value)} required /></div>
                 <div>
                   <label>Month</label>
                   <select value={form.hMonth} onChange={e => set('hMonth', e.target.value)}>
                     {HIJRI_MONTHS.map(m => <option key={m.value} value={m.value}>{m.name}</option>)}
                   </select>
                 </div>
-                <div><label>Year (AH)</label><input type="number" value={form.hYear} onChange={e => set('hYear', e.target.value)} /></div>
+                <div><label>Year (AH)</label><input type="number" min="1" value={form.hYear} onChange={e => set('hYear', e.target.value)} required /></div>
               </div>
             )}
-            {form.basis === 'h' && !editing && (
+            {form.basis === 'h' && (
               <div className="muted">
-                {gregorianDate ? `= ${formatInOrgTz(localToUtcIso(gregorianDate, '12:00'), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}` : 'Not a valid Hijri date'}
+                {gregorianDate ? `= ${formatInOrgTz(localToUtcIso(gregorianDate, '12:00'), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · Hijri based; follows MWA moon-sighting adjustments.` : 'Not a valid Hijri date'}
               </div>
             )}
+            {editing && editMode && <BookingDatePicker basis={form.basis} selectedDate={gregorianDate} overrides={hijriOverrides} onSelect={chooseCalendarDay} />}
 
             {!isAdmin && protectionWarning && <div className="conflict-warn" role="status">{protectionWarning}</div>}
 
@@ -848,7 +862,7 @@ export function BookingModalInner({
                       <option value="confirmed">Confirmed</option>
 
                     </select>
-                    <div className="muted">Up to one year ahead (yearly: 5 occurrences). {form.basis === 'h' ? 'Hijri-anchored: each occurrence follows its Hijri date. ' : ''}Overlapping occurrences are created and flagged for review.</div>
+                    <div className="muted">Up to one year ahead (yearly: 5 occurrences). {form.basis === 'h' ? 'Hijri-anchored: each occurrence follows its Hijri date. ' : ''}You will review each conflicting date before creating the series.</div>
                   </>
                 )}
               </div>
@@ -900,21 +914,26 @@ export function BookingModalInner({
           )}
 
           {repeating && preview && (
-            <div className="card" style={{ marginTop: 14 }}>
+            <div className="card recurring-preview" style={{ marginTop: 14 }}>
               <AdminBackButton disabled={busy} onBack={() => setPreview(null)}/>
-              <b>This will create {preview.count} event(s)</b>
+              <b>Review {preview.count} planned dates</b>
               {preview.conflicts > 0 && <span className="conflict-badge">{preview.conflicts} with conflicts</span>}
               <div className="muted">{form.basis === 'h' ? 'Hijri-anchored: Gregorian dates are derived from the Hijri dates and current adjustment.' : 'Gregorian-anchored: Hijri dates are derived from each Gregorian date.'}</div>
+              {preview.conflicts > 0 && <p>Choose what to do on each conflicting date. Nothing is merged or deleted until you review and confirm that merge separately.</p>}
               <ol className="preview-list">
                 {preview.occurrences.map(o => (
                   <li key={o.index} className={o.hasConflict ? 'has-conflict' : ''}>
                     {fmtRange(o.startAt, o.endAt)}{o.hijri ? ` · ${fmtHijri(o.hijri)}` : ''}
-                    {o.hasConflict && <> — <b>conflict</b>: {o.conflicts.map(x => x.title).join(', ')}</>}
+                    {o.hasConflict && <fieldset className="recurring-conflict-choices"><legend>Clashes with {o.conflicts.map(x => x.title).join(', ')}</legend>
+                      <label><input type="radio" name={`conflict-${o.index}`} checked={conflictChoices[o.index]?.action === 'skip'} onChange={() => setConflictChoices(current => ({ ...current, [o.index]: { action: 'skip' } }))} disabled={busy}/> Keep existing programme; omit the new Iftar booking on this date</label>
+                      {o.conflicts.length === 1 && o.conflicts[0].canMerge ? <label><input type="radio" name={`conflict-${o.index}`} checked={conflictChoices[o.index]?.action === 'merge'} onChange={() => setConflictChoices(current => ({ ...current, [o.index]: { action: 'merge', conflictId: o.conflicts[0].id } }))} disabled={busy}/> Create this date as private and pending, then review a merge with {o.conflicts[0].title}</label> : <p className="muted">A merge needs one overlapping MWA programme in the same venue.</p>}
+                      <label><input type="radio" name={`conflict-${o.index}`} checked={conflictChoices[o.index]?.action === 'review'} onChange={() => setConflictChoices(current => ({ ...current, [o.index]: { action: 'review' } }))} disabled={busy}/> Create this date as private and pending for scheduling review</label>
+                    </fieldset>}
                   </li>
                 ))}
               </ol>
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                <button type="button" className="btn pri" disabled={busy || locked} onClick={() => handleRecurringCreate(true)}>Confirm &amp; create {preview.count} event(s)</button>
+                <button type="button" className="btn pri" disabled={busy || locked || unresolvedSeriesConflicts > 0 || skippedSeriesDates === preview.count} onClick={() => handleRecurringCreate(true)}>Confirm &amp; create {preview.count - skippedSeriesDates} event(s)</button>
 
               </div>
             </div>
@@ -940,6 +959,7 @@ export function BookingModalInner({
         </form>
       </div>
       {extrasEditor}
+      {mergeQueue.length > 0 && <EventMergeModal key={mergeQueue[0].newId} events={mergeEventsList} initialFirstId={mergeQueue[0].existingId} initialSecondId={mergeQueue[0].newId} onClose={() => { setMergeQueue([]); setErr('Merge review paused. Overlapping Iftar occurrences remain private and pending; finish them with Admin → Merge two programmes.'); }} onSaved={() => { setMergeQueue(current => current.slice(1)); onSaved?.(); }} />}
       {deletePrompt && (
         <SeriesDeletePrompt title={editing.title} onChoose={handleDelete} onCancel={() => setDeletePrompt(false)} />
       )}
@@ -953,13 +973,15 @@ const prayerForm = (p, side) => ({
   [`${side}Offset`]: p && Number.isFinite(Number(p.offset)) ? Number(p.offset) : 0
 });
 
-function emptyForm(editing, initialDate, isAdmin) {
+function emptyForm(editing, initialDate, isAdmin, hijriOverrides = []) {
   if (editing) {
     const dateKey = editing.startAt ? dateKeyInOrgTz(editing.startAt) : todayStr();
+    const hijri = editing.dateBasis === 'hijri' || editing.dateBasis === 'h' ? editing.hijriDate : null;
+    const h = hijri?.day && hijri?.month && hijri?.year ? hijri : getHijriParts(dateKey, hijriOverrides);
     return {
       audience: editing.audience || 'family', title: editing.title || '', departmentId: editing.departmentId || '', venueId: editing.venueId || '',
-      basis: 'g', date: dateKey,
-      hDay: '', hMonth: '1', hYear: '',
+      basis: hijri?.day && hijri?.month && hijri?.year ? 'h' : 'g', date: dateKey,
+      hDay: String(h.day || ''), hMonth: String(h.month || 1), hYear: String(h.year || ''),
       start: isoTime(editing.startAt), end: isoTime(editing.endAt),
       contactName: editing.contactName || '', contactEmail: editing.contactEmail || '', contactPhone: editing.contactPhone || '',
       notes: editing.notes || '',

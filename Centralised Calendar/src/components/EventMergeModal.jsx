@@ -18,10 +18,10 @@ function ChoiceList({ title, entries, selected, onToggle, label }) {
   </fieldset>;
 }
 
-export default function EventMergeModal({ events, onClose, onSaved }) {
+export default function EventMergeModal({ events, onClose, onSaved, initialFirstId='', initialSecondId='' }) {
   const candidates = useMemo(() => events.filter(ELIGIBLE).sort((a, b) => a.startAt.localeCompare(b.startAt)), [events]);
-  const [firstId, setFirstId] = useState('');
-  const [secondId, setSecondId] = useState('');
+  const [firstId, setFirstId] = useState(initialFirstId);
+  const [secondId, setSecondId] = useState(initialSecondId);
   const [firstSearch, setFirstSearch] = useState('');
   const [secondSearch, setSecondSearch] = useState('');
   const [keepChoice, setKeepChoice] = useState('first');
